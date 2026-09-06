@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Offline · Developer Command Center</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+        background: #0b0f14;
+        color: #fff;
+        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        text-align: center;
+        padding: 2rem;
+      }
+      h1 { font-size: 1.25rem; letter-spacing: 0.18em; text-transform: uppercase; color: #22d3ee; }
+      p { color: #93a1b1; max-width: 30rem; line-height: 1.6; }
+      button {
+        margin-top: 1.5rem; padding: 0.65rem 1.25rem; border-radius: 0.5rem;
+        border: 1px solid #26313d; background: #111820; color: #fff; cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div>
+      <h1>Command Center offline</h1>
+      <p>
+        The dashboard could not reach the server. Live monitoring data requires a connection —
+        reconnect and retry.
+      </p>
+      <button type="button" onclick="location.reload()">Retry</button>
+    </div>
+  </body>
+</html>
