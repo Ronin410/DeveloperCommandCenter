@@ -31,7 +31,7 @@ jobs:
       - run: npx prisma validate
         env:
           DATABASE_URL: postgresql://dcc:dcc@localhost:5432/dcc?schema=public
-      - run: npm run typecheck
+      - run: npm run typecheck   # runs `next typegen` first
       - run: npm run lint
       - run: npm test
 

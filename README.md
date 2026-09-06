@@ -139,7 +139,7 @@ src/
 |---------|--------------|
 | `npm run dev` | Development server |
 | `npm run build` / `npm start` | Production build / serve |
-| `npm run typecheck` | TypeScript, strict mode |
+| `npm run typecheck` | Route typegen + TypeScript, strict mode |
 | `npm run lint` | ESLint (flat config) |
 | `npm test` | Unit + integration tests (Vitest) |
 | `npm run test:e2e` | End-to-end tests (Playwright) |
