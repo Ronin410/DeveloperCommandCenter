@@ -2,7 +2,7 @@
   "name": "developer-command-center",
   "version": "0.1.0",
   "private": true,
-  "description": "Developer Command Center — monitoring, DevOps and productivity command center for developers.",
+  "description": "Developer Command Center \u2014 monitoring, DevOps and productivity command center for developers.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -22,7 +22,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "engines": {
-    "node": ">=20.11"
+    "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

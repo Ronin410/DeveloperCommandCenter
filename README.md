@@ -41,6 +41,12 @@ API — no client is the centre of the system.
 
 See [ROADMAP.md](./ROADMAP.md) for the full phase plan.
 
+## Requirements
+
+**Node.js 22.12 or newer** (`.nvmrc` pins the major — `nvm use` picks it up).
+The app itself runs on 20.9+, but Vitest 5 / Vite 8 require 22.12+, so an older
+runtime will fail on `npm test` while `npm run dev` keeps working.
+
 ## Quick start (no database required)
 
 ```bash
