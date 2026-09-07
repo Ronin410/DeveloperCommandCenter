@@ -136,6 +136,7 @@ The Node runtime is faster to build and is the recommended path here.
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
+| Build fails with `Cannot find module '@tailwindcss/postcss'` (or `typescript`, or any other dev tool) | Render exposes `NODE_ENV=production` during the build, and npm prunes devDependencies whenever that variable is set — even for `npm ci`. The blueprint's `buildCommand` already passes `--include=dev` to prevent this; a custom build command must do the same | Make sure the build command runs `npm ci --include=dev`, not a plain `npm ci` |
 | Deploy fails on health check | The database was unreachable when the service started | Check the database is live and `DATABASE_URL` is wired; the start command applies migrations itself |
 | API returns "The database schema has not been initialised" | Migrations did not run (custom start command?) | Make sure the start command is `npm run start:migrate` |
 | You cannot sign in on a fresh deploy | `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` were not set at first start | Set them and restart; the account is created on boot |

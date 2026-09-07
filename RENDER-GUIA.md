@@ -299,6 +299,8 @@ avisarte.
 
 | Síntoma | Causa | Solución |
 |---|---|---|
+| El deploy falla con `Cannot find module '@tailwindcss/postcss'` (o `typescript`, o cualquier otra herramienta) | Render aplica `NODE_ENV=production` durante el propio build, y npm omite las devDependencies cuando esa variable está presente — incluso con `npm ci`. El blueprint ya usa `npm ci --include=dev` para evitarlo | Si usaste un build command personalizado, cámbialo para incluir `--include=dev` |
+| El deploy falla con "cannot have more than one active free tier database" | Render solo permite una base de datos PostgreSQL gratuita por cuenta, y ya tienes otra activa en otro proyecto | Borra o sube de plan la otra base de datos, o cambia el `plan` de `dcc-postgres` en `render.yaml` a uno de pago |
 | El deploy falla en el health check | La base de datos no estaba lista al arrancar | Revisa que `dcc-postgres` esté activa y espera; Render reintenta |
 | No puedo entrar en un despliegue nuevo | `BOOTSTRAP_ADMIN_*` no estaban puestas al primer arranque | Ponlas y reinicia el servicio: la cuenta se crea al arrancar |
 | Cambié `BOOTSTRAP_ADMIN_PASSWORD` y no funciona | Es intencional: nunca modifica cuentas existentes | Usa tu contraseña original, o borra la fila de `User` para re-bootstrapear |

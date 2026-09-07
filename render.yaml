@@ -14,7 +14,15 @@ services:
     region: frankfurt # oregon | frankfurt | singapore | ohio | virginia
     branch: main
     # `.nvmrc` pins Node 22; Render reads it automatically.
-    buildCommand: npm ci && npx prisma generate && npm run build
+    #
+    # `--include=dev` is required: NODE_ENV=production below is visible during
+    # the build (not just at runtime), and npm's default install prunes
+    # devDependencies whenever NODE_ENV=production is set. Tailwind's PostCSS
+    # plugin and the TypeScript compiler live in devDependencies — needed to
+    # build, not to run — so a plain `npm ci` here fails with
+    # "Cannot find module '@tailwindcss/postcss'". Reproduced locally against
+    # this exact lockfile before writing this comment.
+    buildCommand: npm ci --include=dev && npx prisma generate && npm run build
     # Applies pending migrations, then serves. Doing it in the start command
     # (instead of a pre-deploy hook) keeps this working on the free plan, and
     # `migrate deploy` is a no-op when there is nothing pending.
