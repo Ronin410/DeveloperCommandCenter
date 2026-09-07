@@ -1,7 +1,7 @@
 import 'server-only';
 import { NextResponse } from 'next/server';
 import { ZodError, type ZodType } from 'zod';
-import { AppError, badRequest } from '@/lib/errors';
+import { AppError, badRequest, serviceUnavailable } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { requireSession, assertCsrf, type SessionContext } from '@/lib/auth/session';
 import { clientIp, rateLimit } from '@/lib/security/rate-limit';
@@ -19,7 +19,28 @@ export function ok<T>(data: T, init?: ResponseInit): NextResponse<ApiSuccess<T>>
   return NextResponse.json({ data, meta: { generatedAt: new Date().toISOString() } }, init);
 }
 
+/**
+ * Prisma reports a missing table as P2021. That happens exactly once in a
+ * deployment's life — when the app boots against a database whose migrations
+ * never ran — and a generic 500 makes it look like a bug in the code rather
+ * than a missing step. Say what it is.
+ */
+function schemaError(error: unknown): AppError | null {
+  const code = (error as { code?: string })?.code;
+  if (code !== 'P2021' && code !== 'P2022') return null;
+
+  return serviceUnavailable(
+    'The database schema has not been initialised. Run "npx prisma migrate deploy" against this database.',
+  );
+}
+
 export function fail(error: unknown): NextResponse<ApiFailure> {
+  const schema = schemaError(error);
+  if (schema) {
+    logger.error('Database schema missing', { code: (error as { code?: string }).code });
+    return NextResponse.json({ error: { code: schema.code, message: schema.message } }, { status: schema.status });
+  }
+
   if (error instanceof AppError) {
     return NextResponse.json(
       { error: { code: error.code, message: error.message, ...(error.details ? { details: error.details } : {}) } },

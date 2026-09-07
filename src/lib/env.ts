@@ -27,6 +27,16 @@ const envSchema = z
     MOCK_ADMIN_EMAIL: z.string().email().default('admin@dcc.local'),
     MOCK_ADMIN_PASSWORD: z.string().min(8).optional(),
 
+    /**
+     * First-run administrator. When both are set and the database holds no
+     * users, the account is created at server start (see instrumentation.ts).
+     * There is deliberately no default: a known password on an
+     * Internet-exposed console would be an open door.
+     */
+    BOOTSTRAP_ADMIN_EMAIL: z.string().email().optional(),
+    BOOTSTRAP_ADMIN_PASSWORD: z.string().min(12).optional(),
+    BOOTSTRAP_ADMIN_NAME: z.string().min(1).default('Command Center Admin'),
+
     MONITORING_INTERVAL_SECONDS: z.coerce.number().int().min(5).default(30),
     MONITORING_TIMEOUT_MS: z.coerce.number().int().min(250).default(5000),
 

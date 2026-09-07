@@ -22,6 +22,10 @@ services:
       MOCK_MODE: ${MOCK_MODE:-false}
       MONITORING_INTERVAL_SECONDS: ${MONITORING_INTERVAL_SECONDS:-30}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      # First-run administrator. Created on startup when the database has no
+      # such user; never modifies an existing account.
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy

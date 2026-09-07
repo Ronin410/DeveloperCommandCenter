@@ -48,21 +48,25 @@ database, and `APP_URL` is left unset on purpose: the app falls back to
 `RENDER_EXTERNAL_URL`, so secure cookies and the CSRF origin check match your
 `*.onrender.com` hostname with nothing to copy by hand.
 
-### 2. Run the migrations
+### 2. Migrations and the first user — automatic
 
-The blueprint uses `preDeployCommand`, which **requires a paid instance type**.
-On the free plan, delete that line from `render.yaml` and run the migrations
-from your own machine using the database's *External* connection string
-(Dashboard → `dcc-postgres` → Connect → External Connection String):
+There are no manual steps here. On every start the service runs
+`prisma migrate deploy` and then, from `instrumentation.ts`:
 
-```bash
-DATABASE_URL="postgresql://…@…render.com/dcc" npx prisma migrate deploy
-```
+- creates the administrator from `BOOTSTRAP_ADMIN_EMAIL` /
+  `BOOTSTRAP_ADMIN_PASSWORD` **if that account does not already exist**;
+- registers the DCC's own API as a monitored service, so the dashboard has real
+  data from the first login instead of empty panels;
+- starts the monitoring engine.
 
-### 3. Create your admin user
+All three are idempotent. Changing `BOOTSTRAP_ADMIN_PASSWORD` later does **not**
+reset an existing account — that is deliberate, so an environment variable can
+never be used to take over the console. Change your password from the app, or
+delete the user row if you truly need to re-bootstrap.
 
-There is no default account in production. Seed one from your machine, against
-the same external connection string:
+If you prefer to seed a fuller catalogue (extra services, alert rules), run the
+seed script from your machine against the database's *External* connection
+string (Dashboard → `dcc-postgres` → Connect):
 
 ```bash
 DATABASE_URL="postgresql://…@…render.com/dcc" \
@@ -70,6 +74,19 @@ SEED_ADMIN_EMAIL="you@example.com" \
 SEED_ADMIN_PASSWORD="a-long-strong-password" \
 npx tsx prisma/seed.ts
 ```
+
+### 3. Deploying without a database at all
+
+To see the whole dashboard before committing to a database, set on the service:
+
+```
+MOCK_MODE=true
+MOCK_ADMIN_PASSWORD=<a long password of your choice>
+```
+
+and remove `DATABASE_URL`. The app then serves the simulated infrastructure and
+an in-memory account (`MOCK_ADMIN_EMAIL`, default `admin@dcc.local`). Nothing is
+persisted and every restart resets it — a demo, not an installation.
 
 ### 4. Verify
 
@@ -95,6 +112,12 @@ still expects the `onrender.com` hostname and every `POST` returns 403.
 | Free PostgreSQL is deleted after 30 days | Your data disappears unless you upgrade or back up |
 | 512 MB RAM / shared CPU | Fine for one user; builds are slow |
 
+Note: the bootstrap registers the DCC's own public URL as a monitored service,
+so the instance health-checks itself every 30 s. On a free plan that traffic
+also stops it from ever idling to sleep. If you would rather let it sleep, mark
+that service as not monitored from the database, or point the check at an
+internal URL.
+
 For a monitoring tool that is supposed to be always on, the free plan is good
 for trying it out, not for relying on it. The `starter` instance type
 (≈7 USD/month) keeps the service awake and makes `preDeployCommand` available;
@@ -110,7 +133,9 @@ The Node runtime is faster to build and is the recommended path here.
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| Deploy fails on health check | Migrations have not run, so the database has no schema | Run `prisma migrate deploy` (step 2) |
+| Deploy fails on health check | The database was unreachable when the service started | Check the database is live and `DATABASE_URL` is wired; the start command applies migrations itself |
+| API returns "The database schema has not been initialised" | Migrations did not run (custom start command?) | Make sure the start command is `npm run start:migrate` |
+| You cannot sign in on a fresh deploy | `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` were not set at first start | Set them and restart; the account is created on boot |
 | Login returns 403 on every POST | `APP_URL` does not match the hostname in the browser | Unset it (to use `RENDER_EXTERNAL_URL`) or set it to the exact custom domain |
 | `Invalid environment configuration: DATABASE_URL` | `MOCK_MODE=false` without a database attached | Check the `fromDatabase` mapping in `render.yaml` |
 | Dashboard shows simulated services | `MOCK_MODE` is still `true` | Set it to `false` in the service's environment |
@@ -120,10 +145,12 @@ The Node runtime is faster to build and is the recommended path here.
 
 ```bash
 docker compose up -d --build
-docker compose exec dcc npx prisma migrate deploy
-docker compose exec dcc npx tsx prisma/seed.ts     # first run only
 docker compose logs -f dcc
 ```
+
+The container applies pending migrations before serving, and creates the
+administrator from `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` in your
+`.env` on first start — the same path Render uses.
 
 The stack runs `dcc` (port 3000), `postgres` and `redis`. Postgres and Redis are
 not published to the host — only the app is reachable.
@@ -173,9 +200,8 @@ Certificates: `certbot --nginx -d dcc.example.com`.
 
 ```bash
 npm ci
-npx prisma migrate deploy
 BUILD_STANDALONE=true npm run build
-node .next/standalone/server.js      # honours PORT / HOSTNAME
+npm run start:migrate                # applies migrations, then serves
 ```
 
 Run it under systemd or pm2 with `EnvironmentFile=/etc/dcc/.env` (mode `0600`).

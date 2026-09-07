@@ -105,6 +105,7 @@ against `/api/health`.
 | `MOCK_MODE` | | `true` | Serve simulated data instead of real providers |
 | `MOCK_ADMIN_EMAIL` | | `admin@dcc.local` | Demo account in mock mode |
 | `MOCK_ADMIN_PASSWORD` | in production mock mode | — | Overrides the demo password |
+| `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` | | — | First-run admin, created on server start; never overwrites an existing account |
 | `SESSION_TTL_SECONDS` | | `604800` | Session lifetime (7 days) |
 | `MONITORING_INTERVAL_SECONDS` | | `30` | Health-check interval |
 | `MONITORING_TIMEOUT_MS` | | `5000` | Per-check timeout |
@@ -152,6 +153,7 @@ src/
 |---------|--------------|
 | `npm run dev` | Development server |
 | `npm run build` / `npm start` | Production build / serve |
+| `npm run start:migrate` | Apply pending migrations, then serve (used in Docker and on Render) |
 | `npm run typecheck` | Route typegen + TypeScript, strict mode |
 | `npm run lint` | ESLint (flat config) |
 | `npm test` | Unit + integration tests (Vitest) |

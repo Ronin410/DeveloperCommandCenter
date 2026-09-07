@@ -15,16 +15,15 @@ services:
     branch: main
     # `.nvmrc` pins Node 22; Render reads it automatically.
     buildCommand: npm ci && npx prisma generate && npm run build
-    startCommand: npm start
+    # Applies pending migrations, then serves. Doing it in the start command
+    # (instead of a pre-deploy hook) keeps this working on the free plan, and
+    # `migrate deploy` is a no-op when there is nothing pending.
+    startCommand: npm run start:migrate
     # Render restarts the instance if this stops returning 2xx. /api/health
     # reports 503 when the database is unreachable, so a broken deploy is
     # caught instead of silently serving errors.
     healthCheckPath: /api/health
     autoDeploy: true
-    # Applies pending migrations before the new version receives traffic.
-    # NOTE: pre-deploy commands require a paid instance type. On the free plan,
-    # delete this line and run migrations from your machine — see DEPLOYMENT.md.
-    preDeployCommand: npx prisma migrate deploy
 
     envVars:
       - key: NODE_ENV
@@ -53,6 +52,15 @@ services:
         value: '30'
       - key: NEXT_PUBLIC_POLL_INTERVAL_SECONDS
         value: '30'
+
+      # First-run administrator. Render prompts for these on the first deploy;
+      # the account is created automatically at server start and never modified
+      # afterwards. Use a long, unique password — this console is on the public
+      # Internet.
+      - key: BOOTSTRAP_ADMIN_EMAIL
+        sync: false
+      - key: BOOTSTRAP_ADMIN_PASSWORD
+        sync: false
 
       # Optional integration. Leave blank to keep using mock repository data.
       - key: GITHUB_TOKEN

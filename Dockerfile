@@ -33,9 +33,16 @@ RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-# Prisma schema + engines, so migrations can run from this image.
+
+# Prisma schema, generated client, CLI and engines. The standalone bundle only
+# traces what the app imports, so the migration CLI has to be copied explicitly
+# — without it the container cannot apply migrations at startup and `npx` would
+# try to download the CLI at runtime, as a non-root user, with no npm cache.
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/prisma ./node_modules/prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
 
 USER nextjs
 EXPOSE 3000
@@ -43,4 +50,6 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["node", "server.js"]
+# Apply pending migrations, then serve. `migrate deploy` is a no-op when the
+# database is already up to date, so restarts stay fast.
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && node server.js"]

@@ -73,6 +73,11 @@ skill) will get an explicit allowlist plus a service credential, not `*`.
 - The Settings screen shows integrations as "Configured / Not configured", never
   values. Service `healthUrl`s (which can embed internal hostnames) are not part
   of any client payload — there is a test asserting this.
+- The first-run administrator is created only from `BOOTSTRAP_ADMIN_EMAIL` /
+  `BOOTSTRAP_ADMIN_PASSWORD` (minimum 12 characters, no defaults), only when a
+  real database is configured, and **only when that account does not already
+  exist** — so an environment variable can never reset a password or hijack an
+  existing console.
 - The built-in demo password only works outside production; a production
   instance in mock mode must set `MOCK_ADMIN_PASSWORD` explicitly or it refuses
   to authenticate.
