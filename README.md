@@ -77,6 +77,13 @@ npm run db:seed                # bootstrap admin + services + alert rules
 npm run dev
 ```
 
+## Deploying
+
+- **Render** — a [`render.yaml`](./render.yaml) blueprint provisions the web
+  service and a managed PostgreSQL instance in one click. See
+  [DEPLOYMENT.md](./DEPLOYMENT.md#2-option-a--render-managed-hosting).
+- **Your own server** — Docker Compose plus a reverse proxy for TLS.
+
 ## Docker
 
 ```bash
@@ -93,7 +100,7 @@ against `/api/health`.
 | Variable | Required | Default | Purpose |
 |----------|----------|---------|---------|
 | `AUTH_SECRET` | ✅ | — | Session/secret material, min. 32 chars |
-| `APP_URL` | | `http://localhost:3000` | Public URL; used for cookies + origin checks |
+| `APP_URL` | | `RENDER_EXTERNAL_URL` or `http://localhost:3000` | Public URL; used for cookies + origin checks |
 | `DATABASE_URL` | when `MOCK_MODE=false` | — | PostgreSQL connection string |
 | `MOCK_MODE` | | `true` | Serve simulated data instead of real providers |
 | `MOCK_ADMIN_EMAIL` | | `admin@dcc.local` | Demo account in mock mode |

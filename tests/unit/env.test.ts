@@ -27,6 +27,20 @@ describe('environment validation', () => {
     expect(() => getEnv()).toThrow(/DATABASE_URL/);
   });
 
+  it('falls back to the platform URL when APP_URL is not set', () => {
+    delete process.env.APP_URL;
+    process.env.RENDER_EXTERNAL_URL = 'https://dcc.onrender.com';
+    resetEnvCache();
+    expect(getEnv().APP_URL).toBe('https://dcc.onrender.com');
+  });
+
+  it('prefers an explicit APP_URL over the platform URL', () => {
+    process.env.APP_URL = 'https://dcc.example.com';
+    process.env.RENDER_EXTERNAL_URL = 'https://dcc.onrender.com';
+    resetEnvCache();
+    expect(getEnv().APP_URL).toBe('https://dcc.example.com');
+  });
+
   it('refuses the built-in demo password in production', () => {
     (process.env as Record<string, string | undefined>).NODE_ENV = 'production';
     delete process.env.MOCK_ADMIN_PASSWORD;

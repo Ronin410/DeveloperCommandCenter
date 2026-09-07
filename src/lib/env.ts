@@ -62,7 +62,7 @@ function isBuildPhase(): boolean {
 export type Env = z.infer<typeof envSchema>;
 
 function loadEnv(): Env {
-  const parsed = envSchema.safeParse(process.env);
+  const parsed = envSchema.safeParse(envSource());
 
   if (!parsed.success) {
     const details = parsed.error.issues
@@ -72,6 +72,21 @@ function loadEnv(): Env {
   }
 
   return parsed.data;
+}
+
+/**
+ * Raw values to validate.
+ *
+ * `APP_URL` drives the Secure cookie flag and the CSRF origin check, so getting
+ * it wrong breaks login in a way that is hard to diagnose. PaaS providers that
+ * publish the public URL as an environment variable are used as a fallback so a
+ * deploy works without hand-copying the hostname.
+ */
+function envSource(): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    APP_URL: process.env.APP_URL ?? process.env.RENDER_EXTERNAL_URL ?? undefined,
+  };
 }
 
 let cached: Env | null = null;
