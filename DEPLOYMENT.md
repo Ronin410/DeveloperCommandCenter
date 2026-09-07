@@ -34,6 +34,9 @@ origin check.
 The repository ships a [`render.yaml`](./render.yaml) blueprint that provisions
 the web service *and* a managed PostgreSQL instance.
 
+> For a longer, step-by-step walkthrough in Spanish — including the tooling you
+> need and an estimated monthly cost — see [RENDER-GUIA.md](./RENDER-GUIA.md).
+
 ### 1. Create the stack
 
 1. Push this branch to GitHub.

@@ -80,8 +80,11 @@ npm run dev
 ## Deploying
 
 - **Render** — a [`render.yaml`](./render.yaml) blueprint provisions the web
-  service and a managed PostgreSQL instance in one click. See
-  [DEPLOYMENT.md](./DEPLOYMENT.md#2-option-a--render-managed-hosting).
+  service and a managed PostgreSQL instance in one click.
+  [**RENDER-GUIA.md**](./RENDER-GUIA.md) is the full walkthrough in Spanish
+  (steps, required tooling and a cost breakdown);
+  [DEPLOYMENT.md](./DEPLOYMENT.md#2-option-a--render-managed-hosting) is the
+  condensed English version.
 - **Your own server** — Docker Compose plus a reverse proxy for TLS.
 
 ## Docker
@@ -179,3 +182,4 @@ npm run test:e2e  # 20 tests (desktop + mobile)
 - [SECURITY.md](./SECURITY.md) — threat model and controls
 - [DEPLOYMENT.md](./DEPLOYMENT.md) — production deployment and remote access
 - [ROADMAP.md](./ROADMAP.md) — phases 1–9
+- [RENDER-GUIA.md](./RENDER-GUIA.md) — guía paso a paso para desplegar en Render (español), con herramientas necesarias y presupuesto
