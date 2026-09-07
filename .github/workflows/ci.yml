@@ -35,6 +35,31 @@ jobs:
       - run: npm run lint
       - run: npm test
 
+  render-build:
+    # Reproduces the exact install + build path Render uses, in the exact
+    # NODE_ENV it sees. `verify` and `e2e` never set NODE_ENV=production, so a
+    # regression here (a devDependency npm prunes at that point, e.g. a build
+    # tool moved out of devDependencies-that-Render-needs) shipped straight to
+    # a live deploy and only surfaced there — see the incident that added this
+    # job: render.yaml's buildCommand needed `--include=dev` because Render
+    # exposes NODE_ENV=production during the build itself, not just at
+    # runtime, and npm's default install omits devDependencies whenever that
+    # variable is set.
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: production
+      MOCK_MODE: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install exactly as render.yaml does
+        run: npm ci --include=dev
+      - run: npx prisma generate
+      - run: npm run build
+
   e2e:
     runs-on: ubuntu-latest
     steps:
