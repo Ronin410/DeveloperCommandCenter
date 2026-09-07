@@ -1,0 +1,64 @@
+# Local development stack (spec §36): dcc + postgres + redis.
+#
+# Secrets come from a local .env file (copy .env.example). Nothing sensitive is
+# committed, and Postgres/Redis are not published to the host network by
+# default — only the app is reachable.
+
+services:
+  dcc:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: developer-command-center:local
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: production
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-dcc}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-dcc}?schema=public
+      REDIS_URL: redis://redis:6379
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
+      MOCK_MODE: ${MOCK_MODE:-false}
+      MONITORING_INTERVAL_SECONDS: ${MONITORING_INTERVAL_SECONDS:-30}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      # First-run administrator. Created on startup when the database has no
+      # such user; never modifies an existing account.
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dcc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-dcc}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-dcc} -d ${POSTGRES_DB:-dcc}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--save', '60', '1', '--loglevel', 'warning']
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:
+  redis-data:

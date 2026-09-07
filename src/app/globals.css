@@ -1,0 +1,123 @@
+@import 'tailwindcss';
+
+/*
+ * Developer Command Center design tokens (spec §28, §29).
+ *
+ * Dark is the primary theme; light is a supported alternative. Both are
+ * expressed as CSS variables so a component never hardcodes a colour, and the
+ * kiosk/Echo Show view can scale type without touching palette rules.
+ */
+
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-faint: var(--ink-faint);
+  --color-accent: var(--accent);
+  --color-online: var(--online);
+  --color-warning: var(--warning);
+  --color-offline: var(--offline);
+  --color-unknown: var(--unknown);
+  --color-info: var(--info);
+}
+
+:root {
+  color-scheme: dark;
+
+  --surface: #0b0f14;
+  --surface-raised: #111820;
+  --surface-sunken: #080b0f;
+  --line: #26313d;
+  --line-strong: #35404e;
+  --ink: #ffffff;
+  --ink-muted: #93a1b1;
+  --ink-faint: #5d6b7c;
+  --accent: #22d3ee;
+  --online: #22c55e;
+  --warning: #f59e0b;
+  --offline: #ef4444;
+  --unknown: #64748b;
+  --info: #38bdf8;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --surface: #f4f6f9;
+  --surface-raised: #ffffff;
+  --surface-sunken: #e8ecf1;
+  --line: #d8dee7;
+  --line-strong: #bcc6d3;
+  --ink: #0b0f14;
+  --ink-muted: #4a5666;
+  --ink-faint: #7b8798;
+  --accent: #0891b2;
+  --online: #16a34a;
+  --warning: #d97706;
+  --offline: #dc2626;
+  --unknown: #64748b;
+  --info: #0284c7;
+}
+
+* {
+  border-color: var(--line);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  /* Respect the notch / home indicator when installed as a PWA. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Status dot with a soft halo — the single most-read element on the dashboard. */
+.status-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}

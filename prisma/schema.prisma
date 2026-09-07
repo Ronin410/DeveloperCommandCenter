@@ -1,0 +1,468 @@
+// Developer Command Center — database schema (spec §27)
+//
+// Design notes:
+//  - Every monitored thing is a `Service`; `Project` groups services and adds
+//    repository/deployment context. This avoids duplicating status columns.
+//  - `ServiceCheck` is the raw health-check log (spec §7); `Metric` is the
+//    generic time-series table (spec §8). Both are append-only and indexed by
+//    (subject, timestamp) so charts and retention jobs stay cheap.
+//  - Auth uses opaque, server-side sessions (`Session`) so a session can be
+//    revoked instantly — see SECURITY.md.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  OPERATOR
+  VIEWER
+}
+
+enum Environment {
+  DEVELOPMENT
+  STAGING
+  PRODUCTION
+}
+
+enum ServiceStatus {
+  ONLINE
+  WARNING
+  OFFLINE
+  UNKNOWN
+}
+
+enum ServiceKind {
+  API
+  BACKEND
+  FRONTEND
+  DATABASE
+  CACHE
+  CONTAINER
+  PROXY
+  SERVER
+  EXTERNAL
+}
+
+enum ProjectStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum DeploymentStatus {
+  SUCCESS
+  RUNNING
+  FAILED
+  CANCELLED
+}
+
+enum MetricType {
+  CPU
+  RAM
+  DISK
+  NETWORK
+  UPTIME
+  REQUESTS
+  ERROR_RATE
+  LATENCY
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}
+
+enum AlertStatus {
+  ACTIVE
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum AlertType {
+  API_DOWN
+  HIGH_LATENCY
+  HIGH_CPU
+  HIGH_MEMORY
+  DISK_SPACE_LOW
+  DEPLOYMENT_FAILED
+  DATABASE_ERROR
+  CUSTOM
+}
+
+enum ComparisonOperator {
+  GT
+  GTE
+  LT
+  LTE
+  EQ
+  NEQ
+}
+
+enum NotificationChannel {
+  PUSH
+  EMAIL
+  TELEGRAM
+  DISCORD
+  ALEXA
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum FocusSessionType {
+  FOCUS
+  SHORT_BREAK
+  LONG_BREAK
+}
+
+enum FocusSessionStatus {
+  RUNNING
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum IntegrationProvider {
+  GITHUB
+  DOCKER
+  POSTGRES
+  REDIS
+  GOOGLE_CALENDAR
+  OUTLOOK_CALENDAR
+  APPLE_CALENDAR
+  TELEGRAM
+  DISCORD
+  ALEXA
+}
+
+// ---------------------------------------------------------------------------
+// Identity & security
+// ---------------------------------------------------------------------------
+
+model User {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  name           String
+  passwordHash   String
+  role           Role      @default(VIEWER)
+  isActive       Boolean   @default(true)
+  // 2FA is phase-2 (spec §2): the columns exist so enabling it is a migration
+  // of behaviour, not of schema.
+  twoFactorSecret String?
+  twoFactorEnabled Boolean  @default(false)
+  lastLoginAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  sessions       Session[]
+  focusSessions  FocusSession[]
+  calendarEvents CalendarEvent[]
+  auditLogs      AuditLog[]
+  projects       Project[]
+
+  @@index([email])
+}
+
+/// Server-side session. `tokenHash` stores a SHA-256 of the opaque cookie
+/// value, so a database dump never yields usable session tokens.
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  csrfToken String
+  userAgent String?
+  ipAddress String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Brute-force protection (spec §24). One row per login attempt, keyed by
+/// email + IP so lockouts can be evaluated on either dimension.
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  email     String
+  ipAddress String
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@index([ipAddress, createdAt])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  resource  String
+  resourceId String?
+  metadata  Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Projects, services & monitoring
+// ---------------------------------------------------------------------------
+
+model Project {
+  id          String        @id @default(cuid())
+  slug        String        @unique
+  name        String
+  description String?
+  repository  String?
+  environment Environment   @default(DEVELOPMENT)
+  status      ProjectStatus @default(ACTIVE)
+  version     String?
+  ownerId     String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  owner       User?        @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  services    Service[]
+  deployments Deployment[]
+
+  @@index([status])
+}
+
+model Service {
+  id          String        @id @default(cuid())
+  slug        String        @unique
+  name        String
+  description String?
+  kind        ServiceKind   @default(API)
+  environment Environment   @default(DEVELOPMENT)
+  /// Health-check target. Never rendered to the client for non-admins because
+  /// it can embed internal hostnames.
+  healthUrl   String?
+  version     String?
+  status      ServiceStatus @default(UNKNOWN)
+  latencyMs   Int?
+  uptimePct   Float?
+  lastCheckAt DateTime?
+  isMonitored Boolean       @default(true)
+  projectId   String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  project Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  checks  ServiceCheck[]
+  metrics Metric[]
+  alerts  Alert[]
+
+  @@index([projectId])
+  @@index([status])
+}
+
+/// Append-only health-check history (spec §7).
+model ServiceCheck {
+  id           String        @id @default(cuid())
+  serviceId    String
+  status       ServiceStatus
+  responseTime Int?
+  httpStatus   Int?
+  error        String?
+  createdAt    DateTime      @default(now())
+
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([serviceId, createdAt])
+}
+
+/// Generic time-series metric (spec §8).
+model Metric {
+  id        String     @id @default(cuid())
+  serviceId String?
+  type      MetricType
+  value     Float
+  unit      String?
+  timestamp DateTime   @default(now())
+
+  service Service? @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([serviceId, type, timestamp])
+  @@index([type, timestamp])
+}
+
+model Deployment {
+  id          String           @id @default(cuid())
+  projectId   String
+  environment Environment
+  version     String
+  branch      String
+  commitSha   String
+  commitMessage String?
+  status      DeploymentStatus @default(RUNNING)
+  author      String
+  durationSec Int?
+  startedAt   DateTime         @default(now())
+  finishedAt  DateTime?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, startedAt])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Alerting
+// ---------------------------------------------------------------------------
+
+model Alert {
+  id          String        @id @default(cuid())
+  type        AlertType
+  severity    AlertSeverity
+  title       String
+  description String?
+  serviceId   String?
+  ruleId      String?
+  status      AlertStatus   @default(ACTIVE)
+  /// Stable hash of (type, service, rule) used to deduplicate repeated
+  /// firings while the alert is still ACTIVE (spec §15).
+  fingerprint String
+  occurrences Int           @default(1)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  acknowledgedAt DateTime?
+  resolvedAt  DateTime?
+
+  service Service?   @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  rule    AlertRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  notifications Notification[]
+
+  @@index([status, createdAt])
+  @@index([fingerprint, status])
+}
+
+/// Declarative rule evaluated by the alert engine (spec §15).
+/// Example: metric=LATENCY, operator=GT, threshold=2000 → WARNING.
+model AlertRule {
+  id          String             @id @default(cuid())
+  name        String
+  description String?
+  type        AlertType
+  severity    AlertSeverity
+  metric      MetricType?
+  operator    ComparisonOperator
+  threshold   Float
+  /// Optional service scope; null = applies to every monitored service.
+  serviceId   String?
+  /// Seconds the condition must hold before firing.
+  forSeconds  Int                @default(0)
+  /// Seconds before the same fingerprint may fire again.
+  cooldownSec Int                @default(300)
+  enabled     Boolean            @default(true)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  alerts Alert[]
+
+  @@index([enabled])
+}
+
+model Notification {
+  id        String              @id @default(cuid())
+  channel   NotificationChannel
+  status    NotificationStatus  @default(PENDING)
+  title     String
+  body      String
+  alertId   String?
+  error     String?
+  sentAt    DateTime?
+  createdAt DateTime            @default(now())
+
+  alert Alert? @relation(fields: [alertId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Productivity
+// ---------------------------------------------------------------------------
+
+model FocusSession {
+  id             String             @id @default(cuid())
+  userId         String
+  type           FocusSessionType   @default(FOCUS)
+  status         FocusSessionStatus @default(RUNNING)
+  /// Configured length in seconds.
+  durationSec    Int
+  /// Seconds already elapsed, persisted on pause so a refresh never loses time.
+  elapsedSec     Int                @default(0)
+  sessionIndex   Int                @default(1)
+  totalSessions  Int                @default(4)
+  label          String?
+  startedAt      DateTime           @default(now())
+  /// When the session was last resumed; null while paused.
+  resumedAt      DateTime?
+  finishedAt     DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startedAt])
+  @@index([userId, status])
+}
+
+model CalendarEvent {
+  id          String   @id @default(cuid())
+  userId      String
+  title       String
+  description String?
+  location    String?
+  startsAt    DateTime
+  endsAt      DateTime
+  allDay      Boolean  @default(false)
+  /// Provider id when synced from Google/Outlook/Apple (spec §21).
+  externalId  String?
+  source      String   @default("local")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startsAt])
+  @@unique([source, externalId])
+}
+
+/// Connection to an external provider. Credentials are NEVER stored here in
+/// plaintext — `config` holds non-secret settings and secrets live in env vars
+/// or the secret store (spec §11, §25).
+model Integration {
+  id          String              @id @default(cuid())
+  provider    IntegrationProvider
+  name        String
+  enabled     Boolean             @default(false)
+  config      Json?
+  lastSyncAt  DateTime?
+  lastError   String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@unique([provider, name])
+}
