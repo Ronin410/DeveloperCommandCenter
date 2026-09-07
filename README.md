@@ -177,6 +177,7 @@ npm run test:e2e  # 20 tests (desktop + mobile)
 
 ## Documentation
 
+- [QUE-HACE.md](./QUE-HACE.md) — qué monitorea, en qué te ayuda y qué no hace todavía (español)
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — decisions, layers, data flow
 - [API.md](./API.md) — endpoint reference
 - [SECURITY.md](./SECURITY.md) — threat model and controls

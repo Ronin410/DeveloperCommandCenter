@@ -325,6 +325,7 @@ resetea: es una demo, no una instalación.
 
 ## Referencias
 
+- [`QUE-HACE.md`](./QUE-HACE.md) — qué monitorea la plataforma y en qué te ayuda
 - [`render.yaml`](./render.yaml) — el blueprint, con comentarios
 - [`DEPLOYMENT.md`](./DEPLOYMENT.md) — despliegue en general, incluido servidor propio
 - [`SECURITY.md`](./SECURITY.md) — controles de seguridad y limitaciones conocidas

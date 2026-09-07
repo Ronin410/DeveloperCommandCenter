@@ -6,6 +6,9 @@ import type { Environment, Service, ServiceKind } from '@prisma/client';
 
 type ServiceRow = Service & { project?: { id: string; name: string } | null };
 
+/** How many recent checks the rolling uptime percentage is computed over. */
+const UPTIME_WINDOW = 200;
+
 function toSummary(row: ServiceRow): ServiceSummary {
   return {
     id: row.id,
@@ -90,11 +93,38 @@ export class PrismaServiceRepository implements ServiceRepository {
       }),
       prisma.service.update({
         where: { id: input.serviceId },
-        data: { status: input.status, latencyMs: input.responseTime, lastCheckAt: new Date() },
+        data: {
+          status: input.status,
+          latencyMs: input.responseTime,
+          lastCheckAt: new Date(),
+          uptimePct: await this.recentUptimePct(input.serviceId, input.status),
+        },
       }),
     ]);
 
     return toCheck(check);
+  }
+
+  /**
+   * Rolling uptime over the last {@link UPTIME_WINDOW} checks, including the one
+   * being written (which is not yet committed when this runs, hence the
+   * `pendingStatus` argument).
+   *
+   * A degraded service still counts as up: WARNING means "slow", not "down", and
+   * conflating the two would make the number useless for spotting real outages.
+   */
+  private async recentUptimePct(serviceId: string, pendingStatus: ServiceStatus): Promise<number> {
+    const previous = await getPrisma().serviceCheck.findMany({
+      where: { serviceId },
+      orderBy: { createdAt: 'desc' },
+      take: UPTIME_WINDOW - 1,
+      select: { status: true },
+    });
+
+    const statuses = [pendingStatus, ...previous.map((row) => row.status as ServiceStatus)];
+    const up = statuses.filter((status) => status === 'ONLINE' || status === 'WARNING').length;
+
+    return Math.round((up / statuses.length) * 10000) / 100;
   }
 
   async listChecks(serviceId: string, limit: number): Promise<ServiceCheckRecord[]> {
