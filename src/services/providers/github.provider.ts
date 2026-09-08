@@ -3,13 +3,23 @@ import type { GitProvider } from '@/services/ports';
 import type { GitRepositorySummary } from '@/types/domain';
 import { getEnv } from '@/lib/env';
 import { logger } from '@/lib/logger';
+import { getCache } from '@/lib/cache';
 
 /**
  * GitHub REST integration (spec §11).
  *
  * The token is read from the environment on the server only and never leaves
  * this module. Failures degrade to an empty list rather than breaking the page.
+ *
+ * `listRepositories()` is 1 + N requests to GitHub's API (the repo list, plus
+ * one commits lookup per repo) — cheap to call once, expensive under the
+ * dashboard's own polling loop, and GitHub rate-limits by token. A short
+ * cache (spec §36) absorbs that: real data is at most `CACHE_TTL_SECONDS` old,
+ * which is a fine trade for not burning the rate limit on every refresh.
  */
+
+const CACHE_TTL_SECONDS = 60;
+const CACHE_KEY = 'github:repositories';
 
 interface GitHubRepo {
   id: number;
@@ -47,10 +57,14 @@ export class GitHubProvider implements GitProvider {
   }
 
   async listRepositories(): Promise<GitRepositorySummary[]> {
+    const cache = getCache();
+    const cached = await cache.get<GitRepositorySummary[]>(CACHE_KEY);
+    if (cached) return cached;
+
     try {
       const repos = await this.fetchJson<GitHubRepo[]>('/user/repos?per_page=10&sort=pushed');
 
-      return await Promise.all(
+      const summaries = await Promise.all(
         repos.map(async (repo) => {
           const commits = await this.fetchJson<GitHubCommit[]>(`/repos/${repo.full_name}/commits?per_page=1`).catch(
             () => [] as GitHubCommit[],
@@ -72,6 +86,9 @@ export class GitHubProvider implements GitProvider {
           };
         }),
       );
+
+      await cache.set(CACHE_KEY, summaries, CACHE_TTL_SECONDS);
+      return summaries;
     } catch (error) {
       logger.warn('GitHub integration unavailable', { error: (error as Error).message });
       return [];

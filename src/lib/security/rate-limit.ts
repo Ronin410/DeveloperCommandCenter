@@ -1,13 +1,15 @@
 import 'server-only';
 import { getEnv } from '@/lib/env';
+import { getRedisClient } from '@/lib/redis';
 
 /**
- * Fixed-window rate limiter with an in-memory store.
+ * Fixed-window rate limiter, in-memory by default.
  *
  * The store is behind an interface on purpose: moving to Redis (spec §36) is a
  * new implementation of `RateLimitStore`, not a rewrite of the call sites. A
- * single-process memory store is correct for a single-container deployment and
- * degrades to per-instance limits when scaled horizontally.
+ * single-process memory store is correct for a single-container deployment;
+ * `RedisRateLimitStore` takes over automatically once `REDIS_URL` is set, so
+ * the limit is shared instead of per-instance once the app scales horizontally.
  */
 
 export interface RateLimitResult {
@@ -47,10 +49,34 @@ class MemoryRateLimitStore implements RateLimitStore {
   }
 }
 
+/**
+ * `INCR` + `PEXPIRE` on the key's first hit — the standard fixed-window
+ * pattern for Redis. There's a narrow race between the two commands (a crash
+ * in between would leave a key with no expiry), which is an accepted
+ * trade-off for a rate limiter: the failure mode is "briefly stricter than
+ * intended" or, at worst, one key surviving until it's evicted, never a
+ * correctness bug like letting extra requests through unbounded.
+ */
+class RedisRateLimitStore implements RateLimitStore {
+  constructor(private readonly client: NonNullable<ReturnType<typeof getRedisClient>>) {}
+
+  async increment(key: string, windowMs: number): Promise<{ count: number; resetAt: number }> {
+    const redisKey = `dcc:ratelimit:${key}`;
+    const count = await this.client.incr(redisKey);
+    if (count === 1) await this.client.pexpire(redisKey, windowMs);
+
+    const ttl = await this.client.pttl(redisKey);
+    return { count, resetAt: Date.now() + (ttl > 0 ? ttl : windowMs) };
+  }
+}
+
 const globalForRateLimit = globalThis as unknown as { dccRateLimitStore?: RateLimitStore };
 
 function getStore(): RateLimitStore {
-  globalForRateLimit.dccRateLimitStore ??= new MemoryRateLimitStore();
+  if (!globalForRateLimit.dccRateLimitStore) {
+    const client = getRedisClient();
+    globalForRateLimit.dccRateLimitStore = client ? new RedisRateLimitStore(client) : new MemoryRateLimitStore();
+  }
   return globalForRateLimit.dccRateLimitStore;
 }
 
