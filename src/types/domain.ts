@@ -91,6 +91,8 @@ export interface ServiceSummary {
   lastCheckAt: string | null;
   projectId: string | null;
   projectName: string | null;
+  /** Whether the health-check engine currently polls this service. */
+  isMonitored: boolean;
 }
 
 export interface ServiceCheckRecord {

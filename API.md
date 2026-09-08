@@ -77,11 +77,49 @@ Everything the dashboard renders: `services`, `system`, `projects`, `alerts`,
 Query: `environment` (`DEVELOPMENT|STAGING|PRODUCTION`), `projectId`.
 
 Each service: `id, slug, name, kind, environment, status, latencyMs, uptimePct,
-version, lastCheckAt, projectId, projectName`.
-Status is one of `ONLINE | WARNING | OFFLINE | UNKNOWN`.
+version, lastCheckAt, projectId, projectName, isMonitored`.
+Status is one of `ONLINE | WARNING | OFFLINE | UNKNOWN`. `healthUrl` is never
+included — it can embed an internal hostname.
+
+### `POST /api/services`
+Registers a new service and runs one health check immediately, so the response
+already reflects a real status instead of `UNKNOWN`.
+
+```json
+{
+  "name": "My API",
+  "healthUrl": "https://api.example.com/health",
+  "kind": "API",
+  "environment": "PRODUCTION",
+  "projectId": null,
+  "description": null
+}
+```
+
+`name` and `healthUrl` (`http`/`https` only) are required; the rest default to
+`API` / `PRODUCTION` / none. The slug is derived from the name and
+de-duplicated automatically (`my-api`, `my-api-2`, …). Any authenticated
+session may create a service — it's reversible, not destructive.
 
 ### `GET /api/services/:id`
 Accepts an id or a slug. Adds `checks[]` (recent health-check history).
+
+### `PATCH /api/services/:id`
+Pauses or resumes health checks without losing history.
+
+```json
+{ "isMonitored": false }
+```
+
+### `DELETE /api/services/:id`
+Permanently removes a service and its check/metric history. Requires the
+`ADMIN` or `OPERATOR` role — this is the one destructive action in the MVP, so
+it is the one endpoint role-gated beyond "authenticated". Built-in mock-mode
+demo services cannot be removed.
+
+### `POST /api/services/:id/check`
+Runs one health check right now, bypassing the schedule — works even while the
+service is paused.
 
 ### `GET /api/system`
 Query: `type` (metric type, default `CPU`), `limit` (1–500, default 60).

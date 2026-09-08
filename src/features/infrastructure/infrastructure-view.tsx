@@ -1,30 +1,67 @@
 'use client';
 
+import { useState } from 'react';
 import { usePolling } from '@/hooks/use-polling';
+import { useSession } from '@/components/layout/session-provider';
+import { apiDelete, apiPatch, apiPost, ApiError } from '@/lib/api/client';
 import { TopBar } from '@/components/layout/top-bar';
 import { PageHeader } from '@/components/layout/page-header';
 import { RefreshIndicator } from '@/components/layout/refresh-indicator';
 import { Card, EmptyState } from '@/components/ui/card';
 import { Meter } from '@/components/ui/meter';
 import { StatusPill } from '@/components/ui/status';
+import { Icon } from '@/components/ui/icon';
+import { AddServiceForm } from '@/features/infrastructure/add-service-form';
 import { cn, formatBytesMb, formatLatency, formatPercent, formatRelativeTime, formatUptime } from '@/utils/format';
-import type { DatabaseStats, DockerContainer, ServiceSummary } from '@/types/domain';
+import type { DatabaseStats, DockerContainer, ProjectSummary, ServiceSummary } from '@/types/domain';
 
 export interface InfrastructureSnapshot {
   services: ServiceSummary[];
   docker: { available: boolean; containers: DockerContainer[] };
   database: DatabaseStats;
+  projects: ProjectSummary[];
 }
 
 /**
- * Infrastructure section (spec §6, §12, §13).
+ * Infrastructure section (spec §6, §12, §13, §26).
  * Each service exposes name, status, latency, uptime, last check, environment
- * and version — the seven fields the spec asks for.
+ * and version — the seven fields the spec asks for — plus, since this is the
+ * screen a user actually manages services from, controls to add, pause/resume,
+ * check, and remove one.
  */
 export function InfrastructureView({ initial }: { initial: InfrastructureSnapshot }) {
+  const { csrfToken, user } = useSession();
   const services = usePolling<ServiceSummary[]>('/api/services', initial.services);
   const docker = usePolling<InfrastructureSnapshot['docker']>('/api/docker', initial.docker);
   const database = usePolling<DatabaseStats>('/api/database', initial.database);
+
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<string | null>(null);
+  const canDelete = user.role === 'ADMIN' || user.role === 'OPERATOR';
+
+  const withBusy = async (id: string, action: () => Promise<void>) => {
+    setBusyId(id);
+    setRowError(null);
+    try {
+      await action();
+      await services.refresh();
+    } catch (cause) {
+      setRowError(cause instanceof ApiError ? cause.message : 'Something went wrong');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const checkNow = (id: string) => withBusy(id, async () => void (await apiPost(`/api/services/${id}/check`, {}, csrfToken)));
+
+  const togglePause = (id: string, isMonitoredNow: boolean) =>
+    withBusy(id, async () => void (await apiPatch(`/api/services/${id}`, { isMonitored: !isMonitoredNow }, csrfToken)));
+
+  const removeService = (id: string, name: string) => {
+    if (!window.confirm(`Remove "${name}"? Its history will be deleted too. This cannot be undone.`)) return;
+    return withBusy(id, async () => void (await apiDelete(`/api/services/${id}`, csrfToken)));
+  };
 
   return (
     <>
@@ -34,22 +71,49 @@ export function InfrastructureView({ initial }: { initial: InfrastructureSnapsho
           title="Infrastructure"
           description="Services, containers and datastores"
           action={
-            <RefreshIndicator
-              lastUpdated={services.lastUpdated}
-              isRefreshing={services.isRefreshing}
-              error={services.error}
-              onRefresh={() => {
-                void services.refresh();
-                void docker.refresh();
-                void database.refresh();
-              }}
-            />
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowAddForm((value) => !value)}
+                className="flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink-muted transition hover:border-accent hover:text-ink"
+              >
+                <Icon name="plus" className="size-3.5" />
+                Add service
+              </button>
+              <RefreshIndicator
+                lastUpdated={services.lastUpdated}
+                isRefreshing={services.isRefreshing}
+                error={services.error}
+                onRefresh={() => {
+                  void services.refresh();
+                  void docker.refresh();
+                  void database.refresh();
+                }}
+              />
+            </div>
           }
         />
 
+        {showAddForm && (
+          <AddServiceForm
+            projects={initial.projects}
+            onClose={() => setShowAddForm(false)}
+            onCreated={() => {
+              setShowAddForm(false);
+              void services.refresh();
+            }}
+          />
+        )}
+
+        {rowError && (
+          <p role="alert" className="mb-4 rounded-lg border border-offline/40 bg-offline/10 px-3 py-2 text-sm text-offline">
+            {rowError}
+          </p>
+        )}
+
         <Card title="Services" flush className="mb-4">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[46rem] text-sm">
+            <table className="w-full min-w-[58rem] text-sm">
               <thead>
                 <tr className="border-b border-line text-left text-[0.65rem] uppercase tracking-wider text-ink-faint">
                   <th className="px-4 py-2 font-medium">Name</th>
@@ -59,25 +123,56 @@ export function InfrastructureView({ initial }: { initial: InfrastructureSnapsho
                   <th className="px-4 py-2 font-medium">Last check</th>
                   <th className="px-4 py-2 font-medium">Environment</th>
                   <th className="px-4 py-2 font-medium">Version</th>
+                  <th className="px-4 py-2 font-medium text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {services.data.map((service) => (
-                  <tr key={service.id} id={service.slug} className="hover:bg-surface-sunken/40">
-                    <td className="px-4 py-2.5">
-                      <span className="block font-medium text-ink">{service.name}</span>
-                      <span className="block text-xs text-ink-faint">{service.kind}</span>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <StatusPill status={service.status} />
-                    </td>
-                    <td className="tabular px-4 py-2.5 text-ink-muted">{formatLatency(service.latencyMs)}</td>
-                    <td className="tabular px-4 py-2.5 text-ink-muted">{formatPercent(service.uptimePct, 2)}</td>
-                    <td className="px-4 py-2.5 text-xs text-ink-faint">{formatRelativeTime(service.lastCheckAt)}</td>
-                    <td className="px-4 py-2.5 text-xs text-ink-muted">{service.environment}</td>
-                    <td className="tabular px-4 py-2.5 text-xs text-ink-muted">{service.version ?? '—'}</td>
-                  </tr>
-                ))}
+                {services.data.map((service) => {
+                  const busy = busyId === service.id;
+                  const paused = !service.isMonitored;
+
+                  return (
+                    <tr key={service.id} id={service.slug} className="hover:bg-surface-sunken/40">
+                      <td className="px-4 py-2.5">
+                        <span className="block font-medium text-ink">{service.name}</span>
+                        <span className="block text-xs text-ink-faint">{service.kind}</span>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <StatusPill status={service.status} />
+                      </td>
+                      <td className="tabular px-4 py-2.5 text-ink-muted">{formatLatency(service.latencyMs)}</td>
+                      <td className="tabular px-4 py-2.5 text-ink-muted">{formatPercent(service.uptimePct, 2)}</td>
+                      <td className="px-4 py-2.5 text-xs text-ink-faint">{formatRelativeTime(service.lastCheckAt)}</td>
+                      <td className="px-4 py-2.5 text-xs text-ink-muted">{service.environment}</td>
+                      <td className="tabular px-4 py-2.5 text-xs text-ink-muted">{service.version ?? '—'}</td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex justify-end gap-1.5">
+                          <RowAction
+                            icon="refresh"
+                            label="Check now"
+                            disabled={busy}
+                            onClick={() => void checkNow(service.id)}
+                          />
+                          <RowAction
+                            icon={paused ? 'play' : 'pause'}
+                            label={paused ? 'Resume' : 'Pause'}
+                            disabled={busy}
+                            onClick={() => void togglePause(service.id, !paused)}
+                          />
+                          {canDelete && (
+                            <RowAction
+                              icon="trash"
+                              label="Remove"
+                              tone="danger"
+                              disabled={busy}
+                              onClick={() => void removeService(service.id, service.name)}
+                            />
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             {services.data.length === 0 && <EmptyState message="No services registered." />}
@@ -159,5 +254,35 @@ export function InfrastructureView({ initial }: { initial: InfrastructureSnapsho
         </div>
       </main>
     </>
+  );
+}
+
+function RowAction({
+  icon,
+  label,
+  onClick,
+  disabled,
+  tone,
+}: {
+  icon: string;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  tone?: 'danger';
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      className={cn(
+        'rounded-md border border-line p-1.5 text-ink-muted transition hover:border-line-strong hover:text-ink disabled:opacity-40',
+        tone === 'danger' && 'hover:border-offline hover:text-offline',
+      )}
+    >
+      <Icon name={icon} className="size-3.5" />
+    </button>
   );
 }

@@ -3,6 +3,8 @@ import { getPrisma } from '@/database/client';
 import type { ServiceRepository } from '@/services/ports';
 import type { ServiceCheckRecord, ServiceDetail, ServiceStatus, ServiceSummary } from '@/types/domain';
 import type { Environment, Service, ServiceKind } from '@prisma/client';
+import { notFound } from '@/lib/errors';
+import { slugify, uniqueSlug } from '@/utils/slug';
 
 type ServiceRow = Service & { project?: { id: string; name: string } | null };
 
@@ -24,6 +26,7 @@ function toSummary(row: ServiceRow): ServiceSummary {
     lastCheckAt: row.lastCheckAt?.toISOString() ?? null,
     projectId: row.projectId,
     projectName: row.project?.name ?? null,
+    isMonitored: row.isMonitored,
   };
 }
 
@@ -141,5 +144,65 @@ export class PrismaServiceRepository implements ServiceRepository {
       where: { isMonitored: true },
       select: { id: true, slug: true, name: true, healthUrl: true },
     });
+  }
+
+  async getHealthUrl(id: string): Promise<string | null> {
+    const row = await getPrisma().service.findUnique({ where: { id }, select: { healthUrl: true } });
+    return row?.healthUrl ?? null;
+  }
+
+  async create(input: {
+    name: string;
+    description: string | null;
+    kind: ServiceKind;
+    environment: Environment;
+    healthUrl: string;
+    projectId: string | null;
+  }): Promise<ServiceSummary> {
+    const prisma = getPrisma();
+    const existing = await prisma.service.findMany({ select: { slug: true } });
+    const slug = uniqueSlug(
+      slugify(input.name),
+      existing.map((row) => row.slug),
+    );
+
+    const row = await prisma.service.create({
+      data: {
+        slug,
+        name: input.name,
+        description: input.description,
+        kind: input.kind,
+        environment: input.environment,
+        healthUrl: input.healthUrl,
+        isMonitored: true,
+        projectId: input.projectId,
+      },
+      include: { project: { select: { id: true, name: true } } },
+    });
+
+    return toSummary(row);
+  }
+
+  async remove(id: string): Promise<void> {
+    try {
+      await getPrisma().service.delete({ where: { id } });
+    } catch (error) {
+      if ((error as { code?: string }).code === 'P2025') throw notFound(`Service "${id}" not found`);
+      throw error;
+    }
+  }
+
+  async setMonitored(id: string, isMonitored: boolean): Promise<ServiceSummary> {
+    try {
+      const row = await getPrisma().service.update({
+        where: { id },
+        data: { isMonitored },
+        include: { project: { select: { id: true, name: true } } },
+      });
+      return toSummary(row);
+    } catch (error) {
+      if ((error as { code?: string }).code === 'P2025') throw notFound(`Service "${id}" not found`);
+      throw error;
+    }
   }
 }

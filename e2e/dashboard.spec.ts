@@ -67,4 +67,27 @@ test.describe('dashboard', () => {
     await expect(page.getByRole('heading', { name: /developer command center/i })).toBeVisible();
     await expect(page.getByRole('navigation', { name: 'Primary' })).toHaveCount(0);
   });
+
+  test('adds, pauses and removes a monitored service from Infrastructure', async ({ page, baseURL }) => {
+    await page.goto('/infrastructure');
+
+    await page.getByRole('button', { name: 'Add service' }).click();
+    const form = page.locator('form[aria-label="Add service to monitor"]');
+    await form.getByPlaceholder('My API').fill('E2E Test Service');
+    // Points at this same server's public health endpoint, so the immediate
+    // check that runs on creation gets a real, deterministic 200.
+    await form.getByPlaceholder('https://api.example.com/health').fill(`${baseURL}/api/health`);
+    await form.getByRole('button', { name: 'Add service' }).click();
+
+    const row = page.locator('tr', { hasText: 'E2E Test Service' });
+    await expect(row).toBeVisible();
+    await expect(row.getByText('ONLINE')).toBeVisible();
+
+    await row.getByLabel('Pause').click();
+    await expect(row.getByLabel('Resume')).toBeVisible();
+
+    page.once('dialog', (dialog) => void dialog.accept());
+    await row.getByLabel('Remove').click();
+    await expect(row).toHaveCount(0);
+  });
 });

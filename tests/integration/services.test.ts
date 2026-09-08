@@ -65,3 +65,112 @@ describe('service layer in mock mode', () => {
     expect(JSON.stringify(database)).not.toMatch(/password|secret|postgresql:\/\//i);
   });
 });
+
+describe('graphical service management (mock mode)', () => {
+  it('creates a service, runs an immediate check, and it appears in the list', async () => {
+    const created = await monitoringService.createService({
+      name: 'My Custom API',
+      description: 'A service I care about',
+      kind: 'API',
+      environment: 'PRODUCTION',
+      healthUrl: 'http://127.0.0.1:1/health', // nothing listens here -> deterministic OFFLINE
+      projectId: null,
+    });
+
+    expect(created.slug).toBe('my-custom-api');
+    expect(created.status).toBe('OFFLINE'); // the immediate check already ran
+    expect(created.isMonitored).toBe(true);
+
+    const services = await monitoringService.listServices();
+    expect(services.some((service) => service.id === created.id)).toBe(true);
+  });
+
+  it('assigns a unique slug when two services share a name', async () => {
+    const first = await monitoringService.createService({
+      name: 'Duplicate Name',
+      description: null,
+      kind: 'API',
+      environment: 'PRODUCTION',
+      healthUrl: 'http://127.0.0.1:1/health',
+      projectId: null,
+    });
+    const second = await monitoringService.createService({
+      name: 'Duplicate Name',
+      description: null,
+      kind: 'API',
+      environment: 'PRODUCTION',
+      healthUrl: 'http://127.0.0.1:1/health',
+      projectId: null,
+    });
+
+    expect(first.slug).toBe('duplicate-name');
+    expect(second.slug).toBe('duplicate-name-2');
+  });
+
+  it('pauses and resumes a custom service', async () => {
+    const created = await monitoringService.createService({
+      name: 'Pausable Service',
+      description: null,
+      kind: 'API',
+      environment: 'PRODUCTION',
+      healthUrl: 'http://127.0.0.1:1/health',
+      projectId: null,
+    });
+    expect(created.isMonitored).toBe(true);
+
+    const paused = await monitoringService.setMonitored(created.id, false);
+    expect(paused.isMonitored).toBe(false);
+
+    const resumed = await monitoringService.setMonitored(created.id, true);
+    expect(resumed.isMonitored).toBe(true);
+  });
+
+  it('removes a custom service and its history', async () => {
+    const created = await monitoringService.createService({
+      name: 'Disposable Service',
+      description: null,
+      kind: 'API',
+      environment: 'PRODUCTION',
+      healthUrl: 'http://127.0.0.1:1/health',
+      projectId: null,
+    });
+
+    await monitoringService.removeService(created.id);
+
+    const services = await monitoringService.listServices();
+    expect(services.some((service) => service.id === created.id)).toBe(false);
+    await expect(monitoringService.getService(created.id)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('refuses to remove a built-in demo service', async () => {
+    const services = await monitoringService.listServices();
+    const builtIn = services[0]!;
+
+    await expect(monitoringService.removeService(builtIn.id)).rejects.toMatchObject({ status: 400 });
+
+    const stillThere = await monitoringService.listServices();
+    expect(stillThere.some((service) => service.id === builtIn.id)).toBe(true);
+  });
+
+  it('runs a manual check-now even while paused', async () => {
+    const created = await monitoringService.createService({
+      name: 'Manual Check Service',
+      description: null,
+      kind: 'API',
+      environment: 'PRODUCTION',
+      healthUrl: 'http://127.0.0.1:1/health',
+      projectId: null,
+    });
+    await monitoringService.setMonitored(created.id, false);
+
+    const detail = await monitoringService.checkServiceNow(created.id);
+    expect(detail.status).toBe('OFFLINE');
+    expect(detail.checks.length).toBeGreaterThan(0);
+  });
+
+  it('rejects a manual check-now on a service with no health check URL', async () => {
+    const services = await monitoringService.listServices();
+    // Built-in mock services have no real healthUrl behind them.
+    await expect(monitoringService.checkServiceNow(services[0]!.id)).rejects.toMatchObject({ status: 400 });
+  });
+});

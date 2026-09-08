@@ -17,6 +17,7 @@ function service(overrides: Partial<ServiceSummary> = {}): ServiceSummary {
     lastCheckAt: new Date().toISOString(),
     projectId: null,
     projectName: null,
+    isMonitored: true,
     ...overrides,
   };
 }

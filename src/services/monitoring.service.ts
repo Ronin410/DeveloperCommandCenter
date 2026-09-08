@@ -2,8 +2,15 @@ import 'server-only';
 import { getContainer } from '@/services/container';
 import { getEnv } from '@/lib/env';
 import { logger } from '@/lib/logger';
-import type { ServiceCheckRecord, ServiceDetail, ServiceStatus, ServiceSummary } from '@/types/domain';
-import { notFound } from '@/lib/errors';
+import type {
+  Environment,
+  ServiceCheckRecord,
+  ServiceDetail,
+  ServiceKind,
+  ServiceStatus,
+  ServiceSummary,
+} from '@/types/domain';
+import { badRequest, notFound } from '@/lib/errors';
 
 /**
  * MonitoringService — health checks and service state (spec §6, §7).
@@ -101,6 +108,71 @@ export class MonitoringService {
 
     logger.debug('Monitoring cycle finished', { checked: targets.length, failures });
     return { checked: targets.length, failures };
+  }
+
+  /**
+   * Registers a new service and runs one check immediately, so it shows a
+   * real status the moment it appears in the UI instead of sitting at
+   * UNKNOWN until the next scheduled cycle (up to `MONITORING_INTERVAL_SECONDS`
+   * away, and never in mock mode, since the periodic engine only runs when
+   * MOCK_MODE is off).
+   */
+  async createService(input: {
+    name: string;
+    description: string | null;
+    kind: ServiceKind;
+    environment: Environment;
+    healthUrl: string;
+    projectId: string | null;
+  }): Promise<ServiceDetail> {
+    const service = await this.container.services.create(input);
+    const result = await this.checkEndpoint(input.healthUrl);
+
+    await this.container.services.recordCheck({
+      serviceId: service.id,
+      status: result.status,
+      responseTime: result.responseTime,
+      httpStatus: result.httpStatus,
+      error: result.error,
+    });
+
+    // Re-read rather than hand-merge the check result onto `service`: recording
+    // a check also recomputes `uptimePct` (see PrismaServiceRepository), and a
+    // manual merge would silently drop any field like that one it doesn't name.
+    return this.getService(service.id);
+  }
+
+  async removeService(id: string): Promise<void> {
+    await this.container.services.remove(id);
+  }
+
+  async setMonitored(id: string, isMonitored: boolean): Promise<ServiceSummary> {
+    return this.container.services.setMonitored(id, isMonitored);
+  }
+
+  /**
+   * Runs one health check for a single service right now, for a manual
+   * "Check now" button — works even while the service is paused, since that
+   * is the point of a manual check.
+   */
+  async checkServiceNow(idOrSlug: string): Promise<ServiceDetail> {
+    const service = await this.getService(idOrSlug);
+
+    const healthUrl = await this.container.services.getHealthUrl(service.id);
+    if (!healthUrl) {
+      throw badRequest(`Service "${idOrSlug}" has no health check URL configured`);
+    }
+
+    const result = await this.checkEndpoint(healthUrl);
+    await this.container.services.recordCheck({
+      serviceId: service.id,
+      status: result.status,
+      responseTime: result.responseTime,
+      httpStatus: result.httpStatus,
+      error: result.error,
+    });
+
+    return this.getService(service.id);
   }
 }
 

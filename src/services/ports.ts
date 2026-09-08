@@ -40,6 +40,26 @@ export interface ServiceRepository {
   listChecks(serviceId: string, limit: number): Promise<ServiceCheckRecord[]>;
   /** Health-check targets for the monitoring engine. */
   listMonitored(): Promise<{ id: string; slug: string; name: string; healthUrl: string | null }[]>;
+  /**
+   * A single service's check URL, regardless of its `isMonitored` flag — used
+   * by the manual "Check now" action, which must work even while paused.
+   * Never exposed on `ServiceSummary`/`ServiceDetail` (it can embed an
+   * internal hostname).
+   */
+  getHealthUrl(id: string): Promise<string | null>;
+  /** Registers a new service to monitor (spec §26 "graphical" alternative to the seed script). */
+  create(input: {
+    name: string;
+    description: string | null;
+    kind: ServiceSummary['kind'];
+    environment: ServiceSummary['environment'];
+    healthUrl: string;
+    projectId: string | null;
+  }): Promise<ServiceSummary>;
+  /** Permanently removes a service and its history. Rejects built-in demo services in mock mode. */
+  remove(id: string): Promise<void>;
+  /** Pauses/resumes health checks without losing history. */
+  setMonitored(id: string, isMonitored: boolean): Promise<ServiceSummary>;
 }
 
 export interface MetricRepository {

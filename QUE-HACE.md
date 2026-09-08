@@ -177,7 +177,6 @@ Prefiero que lo sepas ahora y no después de desplegarlo:
 
 | Limitación de hoy | Qué significa en la práctica |
 |---|---|
-| **No hay alta de servicios desde la interfaz** | Para registrar tus APIs hay que insertarlas en la base de datos (ver §5). Es la limitación más molesta del MVP |
 | **No mide recursos de servidores remotos** | De otro servidor ves si su URL responde y con qué latencia, no su CPU ni su disco. Para eso hace falta un agente, que es fase posterior |
 | **Las notificaciones no salen de la pantalla** | Las alertas se ven en el dashboard; todavía no llegan por push, email, Telegram ni Discord. Tienes que mirar |
 | **Los despliegues no se registran solos** | La sección existe y muestra datos, pero aún no hay webhook que los reciba desde GitHub Actions |
@@ -191,28 +190,31 @@ Todo esto está calendarizado en [ROADMAP.md](./ROADMAP.md).
 
 ## 5. Cómo registrar tus servicios hoy
 
-Mientras no exista el formulario, se hace con SQL. Con la *External Connection
-String* de tu base de datos:
+Desde **Infrastructure → Add service**: nombre, URL de salud, tipo, ambiente y
+—opcionalmente— proyecto. Al guardar, el servidor ejecuta un chequeo inmediato
+contra esa URL, así que aparece con su estado real (ONLINE/OFFLINE) desde el
+primer segundo, no como "UNKNOWN" hasta el próximo ciclo.
 
-```sql
-INSERT INTO "Service" (id, slug, name, kind, environment, "healthUrl", "isMonitored", "updatedAt")
-VALUES (
-  gen_random_uuid()::text,
-  'mi-api',                              -- identificador corto, sin espacios
-  'Mi API',                              -- nombre visible
-  'API',                                 -- API | BACKEND | FRONTEND | DATABASE | CACHE | PROXY | SERVER | EXTERNAL
-  'PRODUCTION',                          -- PRODUCTION | STAGING | DEVELOPMENT
-  'https://api.ejemplo.com/health',      -- URL que se consultará cada 30 s
-  true,
-  now()
-);
+Desde la misma tabla, por fila:
+
+- **Check now** — fuerza un chequeo inmediato, sin esperar los 30 segundos.
+- **Pause/Resume** — deja de consultarlo sin borrar su historial.
+- **Remove** (solo ADMIN/OPERATOR, pide confirmación) — lo elimina junto con
+  todo su historial de chequeos. Los servicios de demostración del modo mock no
+  se pueden eliminar, para que el modo de prueba siga teniendo datos con los
+  que jugar.
+
+Si prefieres scriptear el alta (por ejemplo, para dar de alta varios servicios
+a la vez), la API acepta lo mismo por HTTP:
+
+```bash
+curl -s -b cookies.txt -X POST https://tu-servicio.onrender.com/api/services \
+  -H "content-type: application/json" -H "x-dcc-csrf: $CSRF" \
+  -d '{"name":"Mi API","healthUrl":"https://api.ejemplo.com/health"}'
 ```
 
-En el siguiente ciclo de monitoreo (máximo 30 segundos) aparecerá en el
-dashboard y empezará a acumular historial.
-
-Para dejar de vigilar uno sin borrarlo: `UPDATE "Service" SET "isMonitored" =
-false WHERE slug = 'mi-api';`
+Consulta [API.md](./API.md) para el resto de campos y las reglas de
+validación.
 
 ---
 

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ENVIRONMENTS, FOCUS_SESSION_TYPES, ALERT_STATUSES, METRIC_TYPES } from '@/types/domain';
+import { ENVIRONMENTS, FOCUS_SESSION_TYPES, ALERT_STATUSES, METRIC_TYPES, SERVICE_KINDS } from '@/types/domain';
 
 /** Request validation schemas (spec §39.5 "validar entradas"). */
 
@@ -32,6 +32,31 @@ export const focusStartSchema = z.object({
   type: z.enum(FOCUS_SESSION_TYPES).default('FOCUS'),
   label: z.string().trim().max(120).nullish(),
   durationSec: z.number().int().min(60).max(4 * 60 * 60).optional(),
+});
+
+/**
+ * Only http/https are accepted: the server issues a real GET request to this
+ * URL on every check cycle, so anything else (file:, data:, …) has no
+ * business here.
+ */
+const httpUrl = z
+  .string()
+  .trim()
+  .max(500)
+  .url('A valid URL is required')
+  .refine((value) => ['http:', 'https:'].includes(new URL(value).protocol), 'URL must use http or https');
+
+export const createServiceSchema = z.object({
+  name: z.string().trim().min(1, 'Name is required').max(100),
+  description: z.string().trim().max(500).nullish(),
+  kind: z.enum(SERVICE_KINDS).default('API'),
+  environment: z.enum(ENVIRONMENTS).default('PRODUCTION'),
+  healthUrl: httpUrl,
+  projectId: z.string().trim().min(1).max(64).nullish(),
+});
+
+export const setMonitoredSchema = z.object({
+  isMonitored: z.boolean(),
 });
 
 /** Parses URL search params with a schema, dropping empty values. */

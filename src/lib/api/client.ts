@@ -39,13 +39,30 @@ export async function apiGet<T>(path: string, init?: RequestInit): Promise<T> {
   return parse<T>(response);
 }
 
-export async function apiPost<T>(path: string, body: unknown, csrfToken: string): Promise<T> {
+async function mutate<T>(
+  method: 'POST' | 'PATCH' | 'DELETE',
+  path: string,
+  body: unknown,
+  csrfToken: string,
+): Promise<T> {
   const response = await fetch(path, {
-    method: 'POST',
+    method,
     cache: 'no-store',
     credentials: 'same-origin',
     headers: { 'content-type': 'application/json', [CSRF_HEADER_NAME]: csrfToken },
-    body: JSON.stringify(body ?? {}),
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   return parse<T>(response);
+}
+
+export async function apiPost<T>(path: string, body: unknown, csrfToken: string): Promise<T> {
+  return mutate<T>('POST', path, body ?? {}, csrfToken);
+}
+
+export async function apiPatch<T>(path: string, body: unknown, csrfToken: string): Promise<T> {
+  return mutate<T>('PATCH', path, body ?? {}, csrfToken);
+}
+
+export async function apiDelete<T>(path: string, csrfToken: string): Promise<T> {
+  return mutate<T>('DELETE', path, undefined, csrfToken);
 }

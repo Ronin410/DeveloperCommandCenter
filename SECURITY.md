@@ -104,6 +104,7 @@ keys, or `.env` values. The database module exposes aggregate statistics only
 | Rate limiter is per-instance | Redis store when the app scales horizontally |
 | Docker actions unimplemented | Deliberate: needs confirmation + role checks first |
 | `npm audit`: `deepmerge-ts` advisory via the Prisma **CLI** | Dev-only dependency, not in the runtime image; resolves when Prisma bumps it |
+| Adding a monitored service lets an authenticated user make the server issue outbound GET requests to any http(s) URL, including internal/private addresses | Accepted trade-off: that is the feature (monitoring your own internal services from outside your network). Mitigated by requiring authentication for the endpoint, protocol allowlisting (`http`/`https` only), and a bounded timeout (`MONITORING_TIMEOUT_MS`) per request — but there is no SSRF-style blocklist of private IP ranges |
 
 ## Reporting
 

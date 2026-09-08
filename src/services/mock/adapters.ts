@@ -27,6 +27,8 @@ import type {
   ServiceRepository,
   SystemMetricsProvider,
 } from '@/services/ports';
+import { badRequest, notFound } from '@/lib/errors';
+import { slugify, uniqueSlug } from '@/utils/slug';
 import {
   MOCK_PROJECTS,
   MOCK_SERVICES,
@@ -47,12 +49,50 @@ interface MockState {
   alerts: AlertRecord[];
   focus: Map<string, FocusSessionState & { resumedAtMs: number | null }>;
   checks: ServiceCheckRecord[];
+  /**
+   * Services added through the UI in mock mode. Kept separate from the
+   * static `MOCK_SERVICES` demo dataset — which is never mutated, so the
+   * built-in demo always looks the same — and merged with it at read time.
+   *
+   * Carries `healthUrl` alongside the public fields, stripped by
+   * `toPublicSummary` before anything leaves this module — the same
+   * discipline `PrismaServiceRepository` uses, since a health-check URL can
+   * embed an internal hostname and must never reach the client.
+   */
+  customServices: CustomMockService[];
+}
+
+interface CustomMockService extends ServiceSummary {
+  healthUrl: string;
+}
+
+/**
+ * Explicit field-by-field projection — never a spread — so `healthUrl` can
+ * never leak here by accident when `CustomMockService` grows a field later.
+ */
+function toPublicSummary(service: CustomMockService): ServiceSummary {
+  return {
+    id: service.id,
+    slug: service.slug,
+    name: service.name,
+    description: service.description,
+    kind: service.kind,
+    environment: service.environment,
+    status: service.status,
+    latencyMs: service.latencyMs,
+    uptimePct: service.uptimePct,
+    version: service.version,
+    lastCheckAt: service.lastCheckAt,
+    projectId: service.projectId,
+    projectName: service.projectName,
+    isMonitored: service.isMonitored,
+  };
 }
 
 const globalForMock = globalThis as unknown as { dccMockState?: MockState };
 
 function state(): MockState {
-  globalForMock.dccMockState ??= { alerts: mockAlerts(), focus: new Map(), checks: [] };
+  globalForMock.dccMockState ??= { alerts: mockAlerts(), focus: new Map(), checks: [], customServices: [] };
   return globalForMock.dccMockState;
 }
 
@@ -85,23 +125,36 @@ function toSummary(seed: (typeof MOCK_SERVICES)[number]): ServiceSummary {
     lastCheckAt: new Date(Math.floor(Date.now() / 30_000) * 30_000).toISOString(),
     projectId: seed.projectId,
     projectName: project?.name ?? null,
+    // The built-in demo dataset doesn't support pausing; it always reads ONLINE-ish.
+    isMonitored: true,
   };
+}
+
+function isBuiltInServiceId(id: string): boolean {
+  return MOCK_SERVICES.some((seed) => seed.id === id);
 }
 
 export class MockServiceRepository implements ServiceRepository {
   async list(filter: { environment?: string; projectId?: string } = {}): Promise<ServiceSummary[]> {
-    return MOCK_SERVICES.map(toSummary).filter((service) => {
+    const all = [...MOCK_SERVICES.map(toSummary), ...state().customServices.map(toPublicSummary)];
+    return all.filter((service) => {
       if (filter.environment && service.environment !== filter.environment) return false;
       if (filter.projectId && service.projectId !== filter.projectId) return false;
       return true;
     });
   }
 
+  private findCustom(idOrSlug: string): CustomMockService | undefined {
+    return state().customServices.find((item) => item.id === idOrSlug || item.slug === idOrSlug);
+  }
+
   async findBySlugOrId(idOrSlug: string): Promise<ServiceDetail | null> {
     const seed = MOCK_SERVICES.find((item) => item.id === idOrSlug || item.slug === idOrSlug);
-    if (!seed) return null;
+    if (seed) return { ...toSummary(seed), checks: await this.listChecks(seed.id, 40) };
 
-    return { ...toSummary(seed), checks: await this.listChecks(seed.id, 40) };
+    const custom = this.findCustom(idOrSlug);
+    if (!custom) return null;
+    return { ...toPublicSummary(custom), checks: await this.listChecks(custom.id, 40) };
   }
 
   async recordCheck(input: {
@@ -118,15 +171,39 @@ export class MockServiceRepository implements ServiceRepository {
     };
     state().checks.unshift(check);
     state().checks.splice(500);
+
+    // Custom (user-added) services have no wobble simulation behind them, so
+    // the check result is the only thing that updates their displayed state.
+    const custom = state().customServices.find((item) => item.id === input.serviceId);
+    if (custom) {
+      custom.status = input.status;
+      custom.latencyMs = input.responseTime;
+      custom.lastCheckAt = check.createdAt;
+      const recent = [
+        input.status,
+        ...state()
+          .checks.filter((item) => item.serviceId === input.serviceId && item.id !== check.id)
+          .slice(0, 199)
+          .map((item) => item.status),
+      ];
+      const up = recent.filter((status) => status === 'ONLINE' || status === 'WARNING').length;
+      custom.uptimePct = Math.round((up / recent.length) * 10000) / 100;
+    }
+
     return check;
   }
 
   /** Synthesises a believable check history so charts have something to draw. */
   async listChecks(serviceId: string, limit: number): Promise<ServiceCheckRecord[]> {
     const seed = MOCK_SERVICES.find((item) => item.id === serviceId);
-    if (!seed) return [];
-
     const recorded = state().checks.filter((check) => check.serviceId === serviceId);
+
+    if (!seed) {
+      // Custom services only ever have real, recorded checks — no synthetic
+      // backfill, since there is no baseline to simulate from.
+      return recorded.slice(0, limit);
+    }
+
     const synthetic = Array.from({ length: limit }, (_, index) => {
       const at = new Date(Date.now() - index * 30_000);
       const bucket = Math.floor(at.getTime() / 30_000);
@@ -147,7 +224,78 @@ export class MockServiceRepository implements ServiceRepository {
   }
 
   async listMonitored(): Promise<{ id: string; slug: string; name: string; healthUrl: string | null }[]> {
-    return MOCK_SERVICES.map((seed) => ({ id: seed.id, slug: seed.slug, name: seed.name, healthUrl: null }));
+    const builtIn = MOCK_SERVICES.map((seed) => ({ id: seed.id, slug: seed.slug, name: seed.name, healthUrl: null }));
+    const custom = state()
+      .customServices.filter((service) => service.isMonitored)
+      .map((service) => ({ id: service.id, slug: service.slug, name: service.name, healthUrl: service.healthUrl }));
+    return [...builtIn, ...custom];
+  }
+
+  /**
+   * Built-in demo services are purely simulated (wobble-driven, no real
+   * endpoint behind them), so there is nothing meaningful to check — only
+   * custom services added through the UI have a real URL.
+   */
+  async getHealthUrl(id: string): Promise<string | null> {
+    return this.findCustom(id)?.healthUrl ?? null;
+  }
+
+  async create(input: {
+    name: string;
+    description: string | null;
+    kind: ServiceSummary['kind'];
+    environment: ServiceSummary['environment'];
+    healthUrl: string;
+    projectId: string | null;
+  }): Promise<ServiceSummary> {
+    const taken = new Set([...MOCK_SERVICES.map((seed) => seed.slug), ...state().customServices.map((s) => s.slug)]);
+    const slug = uniqueSlug(slugify(input.name), taken);
+    const project = MOCK_PROJECTS.find((item) => item.id === input.projectId) ?? null;
+
+    const service: CustomMockService = {
+      id: `svc_custom_${Date.now()}_${Math.round(Math.random() * 1000)}`,
+      slug,
+      name: input.name,
+      description: input.description,
+      kind: input.kind,
+      environment: input.environment,
+      status: 'UNKNOWN',
+      latencyMs: null,
+      uptimePct: null,
+      version: null,
+      lastCheckAt: null,
+      projectId: project?.id ?? null,
+      projectName: project?.name ?? null,
+      healthUrl: input.healthUrl,
+      isMonitored: true,
+    };
+
+    state().customServices.unshift(service);
+    return toPublicSummary(service);
+  }
+
+  async remove(id: string): Promise<void> {
+    if (isBuiltInServiceId(id)) {
+      throw badRequest('Built-in demo services cannot be removed. Disable MOCK_MODE to manage real services.');
+    }
+
+    const before = state().customServices.length;
+    state().customServices = state().customServices.filter((item) => item.id !== id);
+    if (state().customServices.length === before) throw notFound(`Service "${id}" not found`);
+
+    state().checks = state().checks.filter((check) => check.serviceId !== id);
+  }
+
+  async setMonitored(id: string, isMonitored: boolean): Promise<ServiceSummary> {
+    if (isBuiltInServiceId(id)) {
+      throw badRequest('Built-in demo services are always monitored.');
+    }
+
+    const service = this.findCustom(id);
+    if (!service) throw notFound(`Service "${id}" not found`);
+
+    service.isMonitored = isMonitored;
+    return toPublicSummary(service);
   }
 }
 
