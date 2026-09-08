@@ -60,11 +60,15 @@ interface MockState {
    * embed an internal hostname and must never reach the client.
    */
   customServices: CustomMockService[];
+  /** Projects added through the UI in mock mode, same idea as `customServices`. */
+  customProjects: CustomMockProject[];
 }
 
 interface CustomMockService extends ServiceSummary {
   healthUrl: string;
 }
+
+type CustomMockProject = Omit<ProjectSummary, 'serviceCount' | 'healthyServices' | 'lastDeploymentAt'>;
 
 /**
  * Explicit field-by-field projection — never a spread — so `healthUrl` can
@@ -92,7 +96,13 @@ function toPublicSummary(service: CustomMockService): ServiceSummary {
 const globalForMock = globalThis as unknown as { dccMockState?: MockState };
 
 function state(): MockState {
-  globalForMock.dccMockState ??= { alerts: mockAlerts(), focus: new Map(), checks: [], customServices: [] };
+  globalForMock.dccMockState ??= {
+    alerts: mockAlerts(),
+    focus: new Map(),
+    checks: [],
+    customServices: [],
+    customProjects: [],
+  };
   return globalForMock.dccMockState;
 }
 
@@ -132,6 +142,19 @@ function toSummary(seed: (typeof MOCK_SERVICES)[number]): ServiceSummary {
 
 function isBuiltInServiceId(id: string): boolean {
   return MOCK_SERVICES.some((seed) => seed.id === id);
+}
+
+function isBuiltInProjectId(id: string): boolean {
+  return MOCK_PROJECTS.some((seed) => seed.id === id);
+}
+
+/** Resolves a project id (built-in or custom) to its `{ id, name }` reference, for denormalising onto a service. */
+function findMockProjectRef(id: string | null): { id: string; name: string } | null {
+  if (!id) return null;
+  const builtIn = MOCK_PROJECTS.find((project) => project.id === id);
+  if (builtIn) return { id: builtIn.id, name: builtIn.name };
+  const custom = state().customProjects.find((project) => project.id === id);
+  return custom ? { id: custom.id, name: custom.name } : null;
 }
 
 export class MockServiceRepository implements ServiceRepository {
@@ -250,7 +273,7 @@ export class MockServiceRepository implements ServiceRepository {
   }): Promise<ServiceSummary> {
     const taken = new Set([...MOCK_SERVICES.map((seed) => seed.slug), ...state().customServices.map((s) => s.slug)]);
     const slug = uniqueSlug(slugify(input.name), taken);
-    const project = MOCK_PROJECTS.find((item) => item.id === input.projectId) ?? null;
+    const project = findMockProjectRef(input.projectId);
 
     const service: CustomMockService = {
       id: `svc_custom_${Date.now()}_${Math.round(Math.random() * 1000)}`,
@@ -271,6 +294,53 @@ export class MockServiceRepository implements ServiceRepository {
     };
 
     state().customServices.unshift(service);
+    return toPublicSummary(service);
+  }
+
+  /**
+   * Edits a custom service in place. Built-in demo services are pure
+   * simulations recomputed from their static seed on every read (see
+   * `toSummary`), so there is nothing persistent to edit — rejected the same
+   * way `remove` and `setMonitored` reject them.
+   */
+  async update(
+    id: string,
+    input: Partial<{
+      name: string;
+      description: string | null;
+      kind: ServiceSummary['kind'];
+      environment: ServiceSummary['environment'];
+      healthUrl: string;
+      projectId: string | null;
+    }>,
+  ): Promise<ServiceSummary> {
+    if (isBuiltInServiceId(id)) {
+      throw badRequest('Built-in demo services cannot be edited. Disable MOCK_MODE to manage real services.');
+    }
+
+    const service = this.findCustom(id);
+    if (!service) throw notFound(`Service "${id}" not found`);
+
+    if (input.name !== undefined) {
+      const taken = new Set([
+        ...MOCK_SERVICES.map((seed) => seed.slug),
+        ...state()
+          .customServices.filter((item) => item.id !== id)
+          .map((item) => item.slug),
+      ]);
+      service.name = input.name;
+      service.slug = uniqueSlug(slugify(input.name), taken);
+    }
+    if (input.description !== undefined) service.description = input.description;
+    if (input.kind !== undefined) service.kind = input.kind;
+    if (input.environment !== undefined) service.environment = input.environment;
+    if (input.healthUrl !== undefined) service.healthUrl = input.healthUrl;
+    if (input.projectId !== undefined) {
+      const project = findMockProjectRef(input.projectId);
+      service.projectId = project?.id ?? null;
+      service.projectName = project?.name ?? null;
+    }
+
     return toPublicSummary(service);
   }
 
@@ -324,11 +394,17 @@ export class MockMetricRepository implements MetricRepository {
 }
 
 export class MockProjectRepository implements ProjectRepository {
+  private allProjects(): CustomMockProject[] {
+    return [...MOCK_PROJECTS, ...state().customProjects];
+  }
+
   async list(): Promise<ProjectSummary[]> {
-    const services = MOCK_SERVICES.map(toSummary);
+    // Custom services can point at either a built-in or a custom project, so
+    // both service pools count toward a project's serviceCount/healthyServices.
+    const services = [...MOCK_SERVICES.map(toSummary), ...state().customServices.map(toPublicSummary)];
     const deployments = mockDeployments();
 
-    return MOCK_PROJECTS.map((project) => {
+    return this.allProjects().map((project) => {
       const own = services.filter((service) => service.projectId === project.id);
       const lastDeployment = deployments
         .filter((deployment) => deployment.projectId === project.id)
@@ -345,6 +421,87 @@ export class MockProjectRepository implements ProjectRepository {
 
   async findBySlugOrId(idOrSlug: string): Promise<ProjectSummary | null> {
     return (await this.list()).find((project) => project.id === idOrSlug || project.slug === idOrSlug) ?? null;
+  }
+
+  async create(input: {
+    name: string;
+    description: string | null;
+    repository: string | null;
+    environment: ProjectSummary['environment'];
+    status: ProjectSummary['status'];
+    version: string | null;
+  }): Promise<ProjectSummary> {
+    const taken = new Set(this.allProjects().map((project) => project.slug));
+    const slug = uniqueSlug(slugify(input.name), taken);
+
+    const project: CustomMockProject = {
+      id: `prj_custom_${Date.now()}_${Math.round(Math.random() * 1000)}`,
+      slug,
+      name: input.name,
+      description: input.description,
+      repository: input.repository,
+      environment: input.environment,
+      status: input.status,
+      version: input.version,
+    };
+
+    state().customProjects.unshift(project);
+    return (await this.list()).find((item) => item.id === project.id) as ProjectSummary;
+  }
+
+  /**
+   * Edits a custom project in place. Built-in demo projects are static, same
+   * reasoning as built-in demo services — rejected rather than silently
+   * ignored, so the UI can surface why nothing changed.
+   */
+  async update(
+    id: string,
+    input: Partial<{
+      name: string;
+      description: string | null;
+      repository: string | null;
+      environment: ProjectSummary['environment'];
+      status: ProjectSummary['status'];
+      version: string | null;
+    }>,
+  ): Promise<ProjectSummary> {
+    if (isBuiltInProjectId(id)) {
+      throw badRequest('Built-in demo projects cannot be edited. Disable MOCK_MODE to manage real projects.');
+    }
+
+    const project = state().customProjects.find((item) => item.id === id);
+    if (!project) throw notFound(`Project "${id}" not found`);
+
+    if (input.name !== undefined) {
+      const taken = new Set(this.allProjects().filter((item) => item.id !== id).map((item) => item.slug));
+      project.name = input.name;
+      project.slug = uniqueSlug(slugify(input.name), taken);
+    }
+    if (input.description !== undefined) project.description = input.description;
+    if (input.repository !== undefined) project.repository = input.repository;
+    if (input.environment !== undefined) project.environment = input.environment;
+    if (input.status !== undefined) project.status = input.status;
+    if (input.version !== undefined) project.version = input.version;
+
+    return (await this.list()).find((item) => item.id === id) as ProjectSummary;
+  }
+
+  /** Removing a project unlinks its services (matches the Prisma schema's `onDelete: SetNull`) rather than deleting them. */
+  async remove(id: string): Promise<void> {
+    if (isBuiltInProjectId(id)) {
+      throw badRequest('Built-in demo projects cannot be removed. Disable MOCK_MODE to manage real projects.');
+    }
+
+    const before = state().customProjects.length;
+    state().customProjects = state().customProjects.filter((item) => item.id !== id);
+    if (state().customProjects.length === before) throw notFound(`Project "${id}" not found`);
+
+    for (const service of state().customServices) {
+      if (service.projectId === id) {
+        service.projectId = null;
+        service.projectName = null;
+      }
+    }
   }
 }
 

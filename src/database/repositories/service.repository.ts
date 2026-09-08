@@ -205,4 +205,39 @@ export class PrismaServiceRepository implements ServiceRepository {
       throw error;
     }
   }
+
+  async update(
+    id: string,
+    input: Partial<{
+      name: string;
+      description: string | null;
+      kind: ServiceKind;
+      environment: Environment;
+      healthUrl: string;
+      projectId: string | null;
+    }>,
+  ): Promise<ServiceSummary> {
+    const prisma = getPrisma();
+    const data: Record<string, unknown> = { ...input };
+
+    if (input.name !== undefined) {
+      const existing = await prisma.service.findMany({ where: { NOT: { id } }, select: { slug: true } });
+      data.slug = uniqueSlug(
+        slugify(input.name),
+        existing.map((row) => row.slug),
+      );
+    }
+
+    try {
+      const row = await prisma.service.update({
+        where: { id },
+        data,
+        include: { project: { select: { id: true, name: true } } },
+      });
+      return toSummary(row);
+    } catch (error) {
+      if ((error as { code?: string }).code === 'P2025') throw notFound(`Service "${id}" not found`);
+      throw error;
+    }
+  }
 }

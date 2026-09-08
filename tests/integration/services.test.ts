@@ -173,4 +173,49 @@ describe('graphical service management (mock mode)', () => {
     // Built-in mock services have no real healthUrl behind them.
     await expect(monitoringService.checkServiceNow(services[0]!.id)).rejects.toMatchObject({ status: 400 });
   });
+
+  it('edits a custom service and regenerates its slug when the name changes', async () => {
+    const created = await monitoringService.createService({
+      name: 'Editable Service',
+      description: null,
+      kind: 'API',
+      environment: 'DEVELOPMENT',
+      healthUrl: 'http://127.0.0.1:1/health',
+      projectId: null,
+    });
+
+    const updated = await monitoringService.updateService(created.id, {
+      name: 'Renamed Service',
+      kind: 'BACKEND',
+      environment: 'STAGING',
+    });
+
+    expect(updated.name).toBe('Renamed Service');
+    expect(updated.slug).toBe('renamed-service');
+    expect(updated.kind).toBe('BACKEND');
+    expect(updated.environment).toBe('STAGING');
+  });
+
+  it('re-checks a custom service immediately when its health URL is edited', async () => {
+    const created = await monitoringService.createService({
+      name: 'Repointed Service',
+      description: null,
+      kind: 'API',
+      environment: 'PRODUCTION',
+      healthUrl: 'http://127.0.0.1:1/health', // deterministic OFFLINE
+      projectId: null,
+    });
+    expect(created.status).toBe('OFFLINE');
+
+    const updated = await monitoringService.updateService(created.id, { healthUrl: 'http://127.0.0.1:2/health' });
+    expect(updated.status).toBe('OFFLINE'); // still nothing listening, but the check re-ran
+    expect(updated.checks.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('refuses to edit a built-in demo service', async () => {
+    const services = await monitoringService.listServices();
+    const builtIn = services[0]!;
+
+    await expect(monitoringService.updateService(builtIn.id, { name: 'Hacked' })).rejects.toMatchObject({ status: 400 });
+  });
 });

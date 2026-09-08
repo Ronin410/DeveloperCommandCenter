@@ -151,6 +151,39 @@ export class MonitoringService {
   }
 
   /**
+   * Edits a service's editable fields. When `healthUrl` changes, runs one
+   * check against the new URL immediately — otherwise the dashboard would
+   * keep showing a status measured against the URL the service no longer
+   * points at until the next scheduled cycle.
+   */
+  async updateService(
+    id: string,
+    input: Partial<{
+      name: string;
+      description: string | null;
+      kind: ServiceKind;
+      environment: Environment;
+      healthUrl: string;
+      projectId: string | null;
+    }>,
+  ): Promise<ServiceDetail> {
+    const updated = await this.container.services.update(id, input);
+
+    if (input.healthUrl !== undefined) {
+      const result = await this.checkEndpoint(input.healthUrl);
+      await this.container.services.recordCheck({
+        serviceId: updated.id,
+        status: result.status,
+        responseTime: result.responseTime,
+        httpStatus: result.httpStatus,
+        error: result.error,
+      });
+    }
+
+    return this.getService(updated.id);
+  }
+
+  /**
    * Runs one health check for a single service right now, for a manual
    * "Check now" button — works even while the service is paused, since that
    * is the point of a manual check.

@@ -12,6 +12,7 @@ import { Meter } from '@/components/ui/meter';
 import { StatusPill } from '@/components/ui/status';
 import { Icon } from '@/components/ui/icon';
 import { AddServiceForm } from '@/features/infrastructure/add-service-form';
+import { EditServiceForm } from '@/features/infrastructure/edit-service-form';
 import { cn, formatBytesMb, formatLatency, formatPercent, formatRelativeTime, formatUptime } from '@/utils/format';
 import type { DatabaseStats, DockerContainer, ProjectSummary, ServiceSummary } from '@/types/domain';
 
@@ -36,6 +37,7 @@ export function InfrastructureView({ initial }: { initial: InfrastructureSnapsho
   const database = usePolling<DatabaseStats>('/api/database', initial.database);
 
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editingService, setEditingService] = useState<ServiceSummary | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
   const canDelete = user.role === 'ADMIN' || user.role === 'OPERATOR';
@@ -74,7 +76,10 @@ export function InfrastructureView({ initial }: { initial: InfrastructureSnapsho
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => setShowAddForm((value) => !value)}
+                onClick={() => {
+                  setEditingService(null);
+                  setShowAddForm((value) => !value);
+                }}
                 className="flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink-muted transition hover:border-accent hover:text-ink"
               >
                 <Icon name="plus" className="size-3.5" />
@@ -100,6 +105,18 @@ export function InfrastructureView({ initial }: { initial: InfrastructureSnapsho
             onClose={() => setShowAddForm(false)}
             onCreated={() => {
               setShowAddForm(false);
+              void services.refresh();
+            }}
+          />
+        )}
+
+        {editingService && (
+          <EditServiceForm
+            service={editingService}
+            projects={initial.projects}
+            onClose={() => setEditingService(null)}
+            onSaved={() => {
+              setEditingService(null);
               void services.refresh();
             }}
           />
@@ -158,6 +175,15 @@ export function InfrastructureView({ initial }: { initial: InfrastructureSnapsho
                             label={paused ? 'Resume' : 'Pause'}
                             disabled={busy}
                             onClick={() => void togglePause(service.id, !paused)}
+                          />
+                          <RowAction
+                            icon="edit"
+                            label="Edit"
+                            disabled={busy}
+                            onClick={() => {
+                              setShowAddForm(false);
+                              setEditingService(service);
+                            }}
                           />
                           {canDelete && (
                             <RowAction

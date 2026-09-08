@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ENVIRONMENTS, FOCUS_SESSION_TYPES, ALERT_STATUSES, METRIC_TYPES, SERVICE_KINDS } from '@/types/domain';
+import { ENVIRONMENTS, FOCUS_SESSION_TYPES, ALERT_STATUSES, METRIC_TYPES, PROJECT_STATUSES, SERVICE_KINDS } from '@/types/domain';
 
 /** Request validation schemas (spec §39.5 "validar entradas"). */
 
@@ -55,9 +55,44 @@ export const createServiceSchema = z.object({
   projectId: z.string().trim().min(1).max(64).nullish(),
 });
 
-export const setMonitoredSchema = z.object({
-  isMonitored: z.boolean(),
+/**
+ * PATCH /api/services/:id accepts any subset of these fields: pausing/resuming
+ * (`isMonitored`) and editing the rest are the same endpoint, since both are
+ * reversible, non-destructive changes to an existing service.
+ */
+export const updateServiceSchema = z
+  .object({
+    name: z.string().trim().min(1, 'Name is required').max(100),
+    description: z.string().trim().max(500).nullable(),
+    kind: z.enum(SERVICE_KINDS),
+    environment: z.enum(ENVIRONMENTS),
+    healthUrl: httpUrl,
+    projectId: z.string().trim().min(1).max(64).nullable(),
+    isMonitored: z.boolean(),
+  })
+  .partial()
+  .refine((body) => Object.keys(body).length > 0, { message: 'At least one field is required' });
+
+export const createProjectSchema = z.object({
+  name: z.string().trim().min(1, 'Name is required').max(100),
+  description: z.string().trim().max(500).nullish(),
+  repository: z.string().trim().max(200).nullish(),
+  environment: z.enum(ENVIRONMENTS).default('DEVELOPMENT'),
+  status: z.enum(PROJECT_STATUSES).default('ACTIVE'),
+  version: z.string().trim().max(50).nullish(),
 });
+
+export const updateProjectSchema = z
+  .object({
+    name: z.string().trim().min(1, 'Name is required').max(100),
+    description: z.string().trim().max(500).nullable(),
+    repository: z.string().trim().max(200).nullable(),
+    environment: z.enum(ENVIRONMENTS),
+    status: z.enum(PROJECT_STATUSES),
+    version: z.string().trim().max(50).nullable(),
+  })
+  .partial()
+  .refine((body) => Object.keys(body).length > 0, { message: 'At least one field is required' });
 
 /** Parses URL search params with a schema, dropping empty values. */
 export function parseQuery<T extends z.ZodType>(request: Request, schema: T): z.infer<T> {

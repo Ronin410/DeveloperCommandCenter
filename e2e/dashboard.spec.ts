@@ -86,8 +86,39 @@ test.describe('dashboard', () => {
     await row.getByLabel('Pause').click();
     await expect(row.getByLabel('Resume')).toBeVisible();
 
+    await row.getByLabel('Edit').click();
+    const editForm = page.locator('form[aria-label="Edit service"]');
+    await editForm.locator('input').first().fill('E2E Test Service Renamed');
+    await editForm.getByRole('button', { name: 'Save changes' }).click();
+    await expect(page.locator('tr', { hasText: 'E2E Test Service Renamed' })).toBeVisible();
+
+    const renamedRow = page.locator('tr', { hasText: 'E2E Test Service Renamed' });
     page.once('dialog', (dialog) => void dialog.accept());
-    await row.getByLabel('Remove').click();
-    await expect(row).toHaveCount(0);
+    await renamedRow.getByLabel('Remove').click();
+    await expect(renamedRow).toHaveCount(0);
+  });
+
+  test('adds, edits and removes a project from Projects', async ({ page }) => {
+    await page.goto('/projects');
+
+    await page.getByRole('button', { name: 'Add project' }).click();
+    const form = page.locator('form[aria-label="Add project"]');
+    await form.getByPlaceholder('My Project').fill('E2E Test Project');
+    await form.getByRole('button', { name: 'Add project' }).click();
+
+    const card = page.locator('section', { hasText: 'E2E Test Project' });
+    await expect(card).toBeVisible();
+
+    await card.getByLabel('Edit E2E Test Project').click();
+    const editForm = page.locator('form[aria-label="Edit project"]');
+    await editForm.locator('input').first().fill('E2E Test Project Renamed');
+    await editForm.getByRole('button', { name: 'Save changes' }).click();
+
+    const renamedCard = page.locator('section', { hasText: 'E2E Test Project Renamed' });
+    await expect(renamedCard).toBeVisible();
+
+    page.once('dialog', (dialog) => void dialog.accept());
+    await renamedCard.getByLabel('Remove E2E Test Project Renamed').click();
+    await expect(renamedCard).toHaveCount(0);
   });
 });

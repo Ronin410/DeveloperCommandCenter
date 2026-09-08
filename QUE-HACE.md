@@ -188,7 +188,7 @@ Todo esto está calendarizado en [ROADMAP.md](./ROADMAP.md).
 
 ---
 
-## 5. Cómo registrar tus servicios hoy
+## 5. Cómo registrar tus servicios y proyectos hoy
 
 Desde **Infrastructure → Add service**: nombre, URL de salud, tipo, ambiente y
 —opcionalmente— proyecto. Al guardar, el servidor ejecuta un chequeo inmediato
@@ -199,10 +199,22 @@ Desde la misma tabla, por fila:
 
 - **Check now** — fuerza un chequeo inmediato, sin esperar los 30 segundos.
 - **Pause/Resume** — deja de consultarlo sin borrar su historial.
+- **Edit** — cambia nombre, tipo, ambiente, proyecto o descripción. La URL de
+  salud, por seguridad, nunca viaja al navegador (puede contener un hostname
+  interno — ver [SECURITY.md](./SECURITY.md)), así que ese campo aparece vacío;
+  déjalo así para conservar la URL actual, o escribe una nueva para
+  reapuntarlo (se vuelve a chequear al instante).
 - **Remove** (solo ADMIN/OPERATOR, pide confirmación) — lo elimina junto con
   todo su historial de chequeos. Los servicios de demostración del modo mock no
-  se pueden eliminar, para que el modo de prueba siga teniendo datos con los
-  que jugar.
+  se pueden eliminar ni editar, para que el modo de prueba siga teniendo datos
+  con los que jugar.
+
+Los proyectos se gestionan igual, desde **Projects → Add project**: nombre,
+repositorio, ambiente, estado y versión, todos opcionales salvo el nombre.
+Cada tarjeta tiene sus propios botones **Edit** y **Remove** (Remove también
+solo para ADMIN/OPERATOR). Eliminar un proyecto no borra sus servicios: se
+quedan, solo pierden la asociación ("sin proyecto"). Los proyectos de
+demostración tampoco se pueden editar ni eliminar.
 
 Si prefieres scriptear el alta (por ejemplo, para dar de alta varios servicios
 a la vez), la API acepta lo mismo por HTTP:

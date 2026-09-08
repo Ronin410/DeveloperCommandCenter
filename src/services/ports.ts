@@ -60,6 +60,21 @@ export interface ServiceRepository {
   remove(id: string): Promise<void>;
   /** Pauses/resumes health checks without losing history. */
   setMonitored(id: string, isMonitored: boolean): Promise<ServiceSummary>;
+  /**
+   * Edits any subset of a service's editable fields. Rejects built-in demo
+   * services in mock mode, same as {@link remove}.
+   */
+  update(
+    id: string,
+    input: Partial<{
+      name: string;
+      description: string | null;
+      kind: ServiceSummary['kind'];
+      environment: ServiceSummary['environment'];
+      healthUrl: string;
+      projectId: string | null;
+    }>,
+  ): Promise<ServiceSummary>;
 }
 
 export interface MetricRepository {
@@ -72,6 +87,29 @@ export interface MetricRepository {
 export interface ProjectRepository {
   list(): Promise<ProjectSummary[]>;
   findBySlugOrId(idOrSlug: string): Promise<ProjectSummary | null>;
+  /** Registers a new project (graphical alternative to inserting a row by hand, spec §26). */
+  create(input: {
+    name: string;
+    description: string | null;
+    repository: string | null;
+    environment: ProjectSummary['environment'];
+    status: ProjectSummary['status'];
+    version: string | null;
+  }): Promise<ProjectSummary>;
+  /** Edits any subset of a project's editable fields. Rejects built-in demo projects in mock mode. */
+  update(
+    id: string,
+    input: Partial<{
+      name: string;
+      description: string | null;
+      repository: string | null;
+      environment: ProjectSummary['environment'];
+      status: ProjectSummary['status'];
+      version: string | null;
+    }>,
+  ): Promise<ProjectSummary>;
+  /** Permanently removes a project. Its services are unlinked, not deleted. Rejects built-in demo projects in mock mode. */
+  remove(id: string): Promise<void>;
 }
 
 export interface DeploymentRepository {

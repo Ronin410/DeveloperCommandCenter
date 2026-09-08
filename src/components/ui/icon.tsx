@@ -28,6 +28,7 @@ const PATHS: Record<string, string> = {
   close: 'M18 6L6 18M6 6l12 12',
   plus: 'M12 5v14M5 12h14',
   trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6',
+  edit: 'M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z',
 };
 
 export function Icon({ name, className }: { name: string; className?: string }) {

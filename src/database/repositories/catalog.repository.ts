@@ -20,34 +20,119 @@ import type {
   ProjectStatus,
   ProjectSummary,
 } from '@/types/domain';
+import type { Project } from '@prisma/client';
+import { notFound } from '@/lib/errors';
+import { slugify, uniqueSlug } from '@/utils/slug';
+
+type ProjectRow = Project & {
+  services: { status: string }[];
+  deployments: { startedAt: Date }[];
+};
+
+const PROJECT_INCLUDE = {
+  services: { select: { status: true } },
+  deployments: { orderBy: { startedAt: 'desc' as const }, take: 1, select: { startedAt: true } },
+};
+
+function toProjectSummary(row: ProjectRow): ProjectSummary {
+  return {
+    id: row.id,
+    slug: row.slug,
+    name: row.name,
+    description: row.description,
+    repository: row.repository,
+    environment: row.environment as Environment,
+    status: row.status as ProjectStatus,
+    version: row.version,
+    serviceCount: row.services.length,
+    healthyServices: row.services.filter((service) => service.status === 'ONLINE').length,
+    lastDeploymentAt: row.deployments[0]?.startedAt.toISOString() ?? null,
+  };
+}
 
 export class PrismaProjectRepository implements ProjectRepository {
   async list(): Promise<ProjectSummary[]> {
     const rows = await getPrisma().project.findMany({
-      include: {
-        services: { select: { status: true } },
-        deployments: { orderBy: { startedAt: 'desc' }, take: 1, select: { startedAt: true } },
-      },
+      include: PROJECT_INCLUDE,
       orderBy: { name: 'asc' },
     });
-
-    return rows.map((row) => ({
-      id: row.id,
-      slug: row.slug,
-      name: row.name,
-      description: row.description,
-      repository: row.repository,
-      environment: row.environment as Environment,
-      status: row.status as ProjectStatus,
-      version: row.version,
-      serviceCount: row.services.length,
-      healthyServices: row.services.filter((service) => service.status === 'ONLINE').length,
-      lastDeploymentAt: row.deployments[0]?.startedAt.toISOString() ?? null,
-    }));
+    return rows.map(toProjectSummary);
   }
 
   async findBySlugOrId(idOrSlug: string): Promise<ProjectSummary | null> {
     return (await this.list()).find((project) => project.id === idOrSlug || project.slug === idOrSlug) ?? null;
+  }
+
+  async create(input: {
+    name: string;
+    description: string | null;
+    repository: string | null;
+    environment: Environment;
+    status: ProjectStatus;
+    version: string | null;
+  }): Promise<ProjectSummary> {
+    const prisma = getPrisma();
+    const existing = await prisma.project.findMany({ select: { slug: true } });
+    const slug = uniqueSlug(
+      slugify(input.name),
+      existing.map((row) => row.slug),
+    );
+
+    const row = await prisma.project.create({
+      data: {
+        slug,
+        name: input.name,
+        description: input.description,
+        repository: input.repository,
+        environment: input.environment,
+        status: input.status,
+        version: input.version,
+      },
+      include: PROJECT_INCLUDE,
+    });
+
+    return toProjectSummary(row);
+  }
+
+  async update(
+    id: string,
+    input: Partial<{
+      name: string;
+      description: string | null;
+      repository: string | null;
+      environment: Environment;
+      status: ProjectStatus;
+      version: string | null;
+    }>,
+  ): Promise<ProjectSummary> {
+    const prisma = getPrisma();
+    const data: Record<string, unknown> = { ...input };
+
+    if (input.name !== undefined) {
+      const existing = await prisma.project.findMany({ where: { NOT: { id } }, select: { slug: true } });
+      data.slug = uniqueSlug(
+        slugify(input.name),
+        existing.map((row) => row.slug),
+      );
+    }
+
+    try {
+      const row = await prisma.project.update({ where: { id }, data, include: PROJECT_INCLUDE });
+      return toProjectSummary(row);
+    } catch (error) {
+      if ((error as { code?: string }).code === 'P2025') throw notFound(`Project "${id}" not found`);
+      throw error;
+    }
+  }
+
+  /** Services pointing at this project are unlinked, not deleted (schema: `onDelete: SetNull`). */
+  async remove(id: string): Promise<void> {
+    try {
+      await getPrisma().project.delete({ where: { id } });
+    } catch (error) {
+      if ((error as { code?: string }).code === 'P2025') throw notFound(`Project "${id}" not found`);
+      throw error;
+    }
   }
 }
 

@@ -105,10 +105,18 @@ session may create a service — it's reversible, not destructive.
 Accepts an id or a slug. Adds `checks[]` (recent health-check history).
 
 ### `PATCH /api/services/:id`
-Pauses or resumes health checks without losing history.
+Pauses/resumes health checks (`isMonitored`) and/or edits any of `name`,
+`description`, `kind`, `environment`, `healthUrl`, `projectId` — any subset,
+in the same request. All fields are optional but at least one is required.
+Editing `healthUrl` runs one check against the new URL immediately, the same
+way creating a service does.
 
 ```json
 { "isMonitored": false }
+```
+
+```json
+{ "name": "My API v2", "healthUrl": "https://api.example.com/healthz" }
 ```
 
 ### `DELETE /api/services/:id`
@@ -134,6 +142,27 @@ Query: `type` (metric type, default `CPU`), `limit` (1–500, default 60).
 ## Catalogue
 
 ### `GET /api/projects`
+
+### `POST /api/projects`
+Registers a new project. Only `name` is required; `environment` defaults to
+`DEVELOPMENT`, `status` to `ACTIVE`.
+
+```json
+{ "name": "My Project", "repository": "github.com/me/my-project", "environment": "PRODUCTION" }
+```
+
+### `GET /api/projects/:id`
+Accepts an id or a slug.
+
+### `PATCH /api/projects/:id`
+Edits any subset of `name`, `description`, `repository`, `environment`,
+`status`, `version`. Reversible, so any authenticated session may do it.
+
+### `DELETE /api/projects/:id`
+Permanently removes a project. Its services are **unlinked, not deleted** —
+they keep their history and simply drop back to "no project". Requires
+`ADMIN` or `OPERATOR`. Built-in mock-mode demo projects cannot be removed.
+
 ### `GET /api/deployments` — query: `projectId`, `limit` (1–100, default 25)
 ### `GET /api/docker` — `{ "available": true, "containers": [...] }`
 ### `GET /api/database` — aggregate PostgreSQL health; never credentials

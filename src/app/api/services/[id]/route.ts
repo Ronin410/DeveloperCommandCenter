@@ -1,6 +1,6 @@
 import { ok, route } from '@/lib/api/response';
 import { monitoringService } from '@/services/monitoring.service';
-import { setMonitoredSchema } from '@/lib/api/schemas';
+import { updateServiceSchema } from '@/lib/api/schemas';
 import { audit } from '@/lib/audit';
 import { forbidden } from '@/lib/errors';
 
@@ -9,22 +9,44 @@ export const dynamic = 'force-dynamic';
 /** GET /api/services/:id — detail plus recent check history. */
 export const GET = route(async ({ params }) => ok(await monitoringService.getService(params.id ?? '')));
 
-/** PATCH /api/services/:id — pause/resume health checks. Reversible, so any session may do it. */
+/**
+ * PATCH /api/services/:id — pause/resume (`isMonitored`) and/or edit any of the
+ * other fields, in the same request. Both are reversible, so any authenticated
+ * session may do either — same authorization tier as creating a service.
+ */
 export const PATCH = route(
   async ({ params, body, session, ip }) => {
-    const service = await monitoringService.setMonitored(params.id ?? '', body.isMonitored);
+    const id = params.id ?? '';
 
-    await audit({
-      action: body.isMonitored ? 'service.resume' : 'service.pause',
-      resource: 'service',
-      resourceId: service.id,
-      userId: session.user.id,
-      ipAddress: ip,
-    });
+    if (body.isMonitored !== undefined) {
+      await monitoringService.setMonitored(id, body.isMonitored);
+      await audit({
+        action: body.isMonitored ? 'service.resume' : 'service.pause',
+        resource: 'service',
+        resourceId: id,
+        userId: session.user.id,
+        ipAddress: ip,
+      });
+    }
 
-    return ok(service);
+    const edits = {
+      name: body.name,
+      description: body.description,
+      kind: body.kind,
+      environment: body.environment,
+      healthUrl: body.healthUrl,
+      projectId: body.projectId,
+    };
+    const hasEdits = Object.values(edits).some((value) => value !== undefined);
+
+    if (hasEdits) {
+      await monitoringService.updateService(id, edits);
+      await audit({ action: 'service.update', resource: 'service', resourceId: id, userId: session.user.id, ipAddress: ip });
+    }
+
+    return ok(await monitoringService.getService(id));
   },
-  { schema: setMonitoredSchema },
+  { schema: updateServiceSchema },
 );
 
 /**
