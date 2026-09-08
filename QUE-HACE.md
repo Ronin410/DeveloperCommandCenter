@@ -73,6 +73,10 @@ el propio DCC**.
 > DCC, no de tus otros servidores. Para vigilar otro servidor, lo que se
 > monitorea hoy es su endpoint HTTP, no sus recursos internos. Ver §4.
 
+Cada barra de CPU/RAM/Disco lleva debajo una minigráfica con la tendencia de
+los últimos 30 minutos, para distinguir "acaba de subir" de "así ha estado
+todo el rato" sin tener que ir a mirar logs.
+
 ### 2.3 La base de datos PostgreSQL
 
 Conexiones abiertas, tamaño ocupado, latencia y versión. Sin exponer jamás

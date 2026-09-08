@@ -261,3 +261,16 @@ describe('database deep metrics (mock mode)', () => {
     expect(deep.walArchiving).not.toBeNull();
   });
 });
+
+describe('historical metric charts (mock mode)', () => {
+  it('returns a bounded, chronologically-ordered series for a metric type', async () => {
+    const points = await systemService.getHistory('CPU', 10);
+
+    expect(points).toHaveLength(10);
+    for (const point of points) {
+      expect(point.value).toBeGreaterThan(0);
+      expect(new Date(point.timestamp).toString()).not.toBe('Invalid Date');
+    }
+    expect(points[0]!.timestamp <= points[points.length - 1]!.timestamp).toBe(true);
+  });
+});

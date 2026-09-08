@@ -1,57 +1,31 @@
-import { cn } from '@/utils/format';
-
 /**
- * Dependency-free sparkline (spec §28 "gráficas simples", §39.15).
- * A 40-point latency series does not justify a charting library.
+ * Minimal inline-SVG trend line. No charting library: a dozen lines of SVG
+ * covers "is this metric trending up or down", which is all a sparkline is
+ * for — the same reasoning that keeps the icon set hand-drawn (see icon.tsx).
  */
-export function Sparkline({
-  points,
-  className,
-  height = 40,
-  width = 160,
-}: {
-  points: number[];
-  className?: string;
-  height?: number;
-  width?: number;
-}) {
-  if (points.length < 2) {
-    return <div className={cn('h-10 text-xs text-ink-faint', className)}>No data yet</div>;
-  }
+export function Sparkline({ points, className }: { points: number[]; className?: string }) {
+  if (points.length < 2) return null;
 
+  const width = 100;
+  const height = 28;
   const min = Math.min(...points);
   const max = Math.max(...points);
-  const span = max - min || 1;
+  const range = max - min || 1;
+  const step = width / (points.length - 1);
 
   const coords = points.map((value, index) => {
-    const x = (index / (points.length - 1)) * width;
-    const y = height - ((value - min) / span) * (height - 4) - 2;
-    return `${x.toFixed(2)},${y.toFixed(2)}`;
+    const x = index * step;
+    const y = height - ((value - min) / range) * height;
+    return `${x},${y}`;
   });
 
+  const linePath = `M${coords.join(' L')}`;
+  const areaPath = `${linePath} L${width},${height} L0,${height} Z`;
+
   return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      className={cn('w-full', className)}
-      style={{ height }}
-      preserveAspectRatio="none"
-      role="img"
-      aria-label={`Trend from ${min.toFixed(0)} to ${max.toFixed(0)}`}
-    >
-      <polyline
-        points={`0,${height} ${coords.join(' ')} ${width},${height}`}
-        fill="color-mix(in srgb, var(--accent) 12%, transparent)"
-        stroke="none"
-      />
-      <polyline
-        points={coords.join(' ')}
-        fill="none"
-        stroke="var(--accent)"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        vectorEffect="non-scaling-stroke"
-      />
+    <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className={className} aria-hidden="true">
+      <path d={areaPath} fill="currentColor" opacity="0.12" />
+      <path d={linePath} fill="none" stroke="currentColor" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
     </svg>
   );
 }

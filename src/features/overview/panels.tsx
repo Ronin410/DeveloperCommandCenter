@@ -1,10 +1,13 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { Card, EmptyState } from '@/components/ui/card';
 import { Meter } from '@/components/ui/meter';
+import { Sparkline } from '@/components/ui/sparkline';
 import { StatusDot, StatusPill, statusColorClass } from '@/components/ui/status';
 import { Icon } from '@/components/ui/icon';
+import { apiGet } from '@/lib/api/client';
 import {
   cn,
   formatClock,
@@ -21,11 +24,45 @@ import type {
   DeploymentRecord,
   DeploymentStatus,
   FocusSessionState,
+  MetricType,
   ProjectSummary,
   SelfHealth,
   ServiceSummary,
   SystemMetrics,
 } from '@/types/domain';
+
+/**
+ * Self-polling trend for one metric type — kept separate from the overview's
+ * own polling loop (spec §8 "historical charts") since only this panel needs
+ * it, and folding it into `/api/overview` would make every other panel pay
+ * for a query it doesn't use.
+ */
+function useMetricTrend(type: MetricType, limit = 30): number[] {
+  const [points, setPoints] = useState<number[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = () => {
+      apiGet<{ history: { points: { value: number }[] } }>(`/api/system?type=${type}&limit=${limit}`)
+        .then((result) => {
+          if (!cancelled) setPoints(result.history.points.map((point) => point.value));
+        })
+        .catch(() => {
+          // A failed trend fetch just leaves the sparkline empty — it's a nice-to-have, not core data.
+        });
+    };
+
+    load();
+    const timer = setInterval(load, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [type, limit]);
+
+  return points;
+}
 
 /** Reusable dashboard panels, shared by the overview and the kiosk view. */
 
@@ -55,12 +92,25 @@ export function ServicesPanel({ services }: { services: ServiceSummary[] }) {
 }
 
 export function SystemPanel({ system }: { system: SystemMetrics }) {
+  const cpuTrend = useMetricTrend('CPU');
+  const ramTrend = useMetricTrend('RAM');
+  const diskTrend = useMetricTrend('DISK');
+
   return (
     <Card title="System" subtitle={`Uptime ${formatUptime(system.uptimeSec)}`}>
       <div className="space-y-4">
-        <Meter label="CPU" value={system.cpuPct} />
-        <Meter label="RAM" value={system.ramPct} />
-        <Meter label="Disk" value={system.diskPct} />
+        <div>
+          <Meter label="CPU" value={system.cpuPct} />
+          <Sparkline points={cpuTrend} className="mt-1 h-5 w-full text-ink-faint" />
+        </div>
+        <div>
+          <Meter label="RAM" value={system.ramPct} />
+          <Sparkline points={ramTrend} className="mt-1 h-5 w-full text-ink-faint" />
+        </div>
+        <div>
+          <Meter label="Disk" value={system.diskPct} />
+          <Sparkline points={diskTrend} className="mt-1 h-5 w-full text-ink-faint" />
+        </div>
       </div>
 
       <dl className="mt-5 grid grid-cols-3 gap-3 border-t border-line pt-4 text-center">

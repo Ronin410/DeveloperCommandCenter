@@ -14,7 +14,7 @@ System metrics · PWA shell · Kiosk view · Mock mode · Tests · Docker.
 - [x] Per-container CPU/RAM via the stats stream
 - [x] Postgres deep metrics (slow queries, table sizes, backup status)
 - [ ] Redis as cache + rate-limit store
-- [ ] Historical metric charts from the `Metric` table
+- [x] Historical metric charts from the `Metric` table
 - [ ] Retention/downsampling job
 
 ## Phase 3 — DevOps
