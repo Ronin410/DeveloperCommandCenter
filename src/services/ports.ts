@@ -161,6 +161,12 @@ export interface SystemMetricsProvider {
 export interface DockerProvider {
   listContainers(): Promise<DockerContainer[]>;
   isAvailable(): Promise<boolean>;
+  /** Restarts a container. Destructive-ish (drops in-memory state), so the route layer requires ADMIN/OPERATOR. */
+  restart(id: string): Promise<void>;
+  /** Stops a container. Same authorization tier as {@link restart}. */
+  stop(id: string): Promise<void>;
+  /** Recent stdout/stderr lines, most recent last. Read-only. */
+  logs(id: string, tail?: number): Promise<string[]>;
 }
 
 export interface DatabaseStatsProvider {

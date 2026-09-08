@@ -165,6 +165,16 @@ they keep their history and simply drop back to "no project". Requires
 
 ### `GET /api/deployments` — query: `projectId`, `limit` (1–100, default 25)
 ### `GET /api/docker` — `{ "available": true, "containers": [...] }`
+Each container includes real per-container `cpuPct`/`memoryMb` (one Docker
+stats read per running container).
+
+### `POST /api/docker/:id/restart` · `POST /api/docker/:id/stop`
+Requires `ADMIN` or `OPERATOR` — same tier as removing a service. The
+confirmation dialog lives in the UI; these endpoints are the authorization
+layer the spec requires alongside it.
+
+### `GET /api/docker/:id/logs` — query: `tail` (1–2000, default 200)
+Read-only, any authenticated session. Recent stdout/stderr lines, oldest first.
 ### `GET /api/database` — aggregate PostgreSQL health; never credentials
 ### `GET /api/git` — repositories, commits and workflow status
 ### `GET /api/calendar` — `{ "today": [...], "upcoming": [...] }`

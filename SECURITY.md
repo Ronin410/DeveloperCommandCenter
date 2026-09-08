@@ -102,7 +102,7 @@ keys, or `.env` values. The database module exposes aggregate statistics only
 | 2FA | Columns exist on `User`; TOTP enrolment is phase 2 |
 | Password reset | Requires the email provider from phase 5 |
 | Rate limiter is per-instance | Redis store when the app scales horizontally |
-| Docker actions unimplemented | Deliberate: needs confirmation + role checks first |
+| Docker restart/stop reach any container the socket can see | Same trade-off as service health checks: authentication + `ADMIN`/`OPERATOR` role + a confirmation dialog are the guardrails, not a container allowlist |
 | `npm audit`: `deepmerge-ts` advisory via the Prisma **CLI** | Dev-only dependency, not in the runtime image; resolves when Prisma bumps it |
 | Adding a monitored service lets an authenticated user make the server issue outbound GET requests to any http(s) URL, including internal/private addresses | Accepted trade-off: that is the feature (monitoring your own internal services from outside your network). Mitigated by requiring authentication for the endpoint, protocol allowlisting (`http`/`https` only), and a bounded timeout (`MONITORING_TIMEOUT_MS`) per request — but there is no SSRF-style blocklist of private IP ranges |
 

@@ -10,8 +10,8 @@ System metrics · PWA shell · Kiosk view · Mock mode · Tests · Docker.
 
 ## Phase 2 — Infrastructure
 
-- [ ] Docker container actions (restart/stop/logs) with confirmation + role checks
-- [ ] Per-container CPU/RAM via the stats stream
+- [x] Docker container actions (restart/stop/logs) with confirmation + role checks
+- [x] Per-container CPU/RAM via the stats stream
 - [ ] Postgres deep metrics (slow queries, table sizes, backup status)
 - [ ] Redis as cache + rate-limit store
 - [ ] Historical metric charts from the `Metric` table

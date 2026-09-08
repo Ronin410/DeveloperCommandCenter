@@ -219,3 +219,34 @@ describe('graphical service management (mock mode)', () => {
     await expect(monitoringService.updateService(builtIn.id, { name: 'Hacked' })).rejects.toMatchObject({ status: 400 });
   });
 });
+
+describe('docker container actions (mock mode)', () => {
+  it('stops and restarts a container', async () => {
+    const before = await dockerService.listContainers();
+    const target = before.containers[0]!;
+    expect(target.state).toBe('running');
+
+    await dockerService.stop(target.id);
+    const afterStop = await dockerService.listContainers();
+    const stopped = afterStop.containers.find((c) => c.id === target.id)!;
+    expect(stopped.state).toBe('exited');
+    expect(stopped.status).toBe('OFFLINE');
+    expect(stopped.cpuPct).toBe(0);
+
+    await dockerService.restart(target.id);
+    const afterRestart = await dockerService.listContainers();
+    expect(afterRestart.containers.find((c) => c.id === target.id)!.state).toBe('running');
+  });
+
+  it('returns log lines for a container', async () => {
+    const { containers } = await dockerService.listContainers();
+    const lines = await dockerService.logs(containers[0]!.id);
+    expect(lines.length).toBeGreaterThan(0);
+  });
+
+  it('rejects an action on an unknown container id', async () => {
+    await expect(dockerService.restart('ctr_does_not_exist')).rejects.toMatchObject({ status: 404 });
+    await expect(dockerService.stop('ctr_does_not_exist')).rejects.toMatchObject({ status: 404 });
+    await expect(dockerService.logs('ctr_does_not_exist')).rejects.toMatchObject({ status: 404 });
+  });
+});

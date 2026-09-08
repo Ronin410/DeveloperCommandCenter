@@ -62,6 +62,8 @@ interface MockState {
   customServices: CustomMockService[];
   /** Projects added through the UI in mock mode, same idea as `customServices`. */
   customProjects: CustomMockProject[];
+  /** Restart/stop overrides for the simulated Docker containers, keyed by container id. */
+  dockerOverrides: Map<string, 'running' | 'exited'>;
 }
 
 interface CustomMockService extends ServiceSummary {
@@ -102,6 +104,7 @@ function state(): MockState {
     checks: [],
     customServices: [],
     customProjects: [],
+    dockerOverrides: new Map(),
   };
   return globalForMock.dccMockState;
 }
@@ -711,35 +714,66 @@ export class MockSystemMetricsProvider implements SystemMetricsProvider {
   }
 }
 
+const DOCKER_DEFINITIONS: [string, string, number, number, number][] = [
+  ['backend', 'acme/pasitos-api:2.4.18', 12, 420, 1024],
+  ['frontend', 'acme/pasitos-web:3.1.0', 5, 280, 512],
+  ['postgres', 'postgres:16-alpine', 8, 510, 2048],
+  ['redis', 'redis:7-alpine', 2, 120, 512],
+  ['nginx', 'nginx:1.27-alpine', 1, 80, 256],
+];
+
 export class MockDockerProvider implements DockerProvider {
   async isAvailable(): Promise<boolean> {
     return true;
   }
 
   async listContainers(): Promise<DockerContainer[]> {
-    const definitions: [string, string, number, number, number][] = [
-      ['backend', 'acme/pasitos-api:2.4.18', 12, 420, 1024],
-      ['frontend', 'acme/pasitos-web:3.1.0', 5, 280, 512],
-      ['postgres', 'postgres:16-alpine', 8, 510, 2048],
-      ['redis', 'redis:7-alpine', 2, 120, 512],
-      ['nginx', 'nginx:1.27-alpine', 1, 80, 256],
-    ];
+    return DOCKER_DEFINITIONS.map(([name, image, cpu, memory, limit], index) => {
+      const id = `ctr_${name}`;
+      const override = state().dockerOverrides.get(id);
+      const running = override !== 'exited';
+      const cpuPct = running ? Math.max(0.1, wobble(`docker:${name}:cpu`, cpu, cpu * 0.4)) : 0;
 
-    return definitions.map(([name, image, cpu, memory, limit], index) => {
-      const cpuPct = Math.max(0.1, wobble(`docker:${name}:cpu`, cpu, cpu * 0.4));
       return {
-        id: `ctr_${name}`,
+        id,
         name,
         image,
-        state: 'running' as const,
-        status: cpuPct > cpu * 2 ? ('WARNING' as const) : ('ONLINE' as const),
+        state: running ? ('running' as const) : ('exited' as const),
+        status: !running ? ('OFFLINE' as const) : cpuPct > cpu * 2 ? ('WARNING' as const) : ('ONLINE' as const),
         cpuPct,
-        memoryMb: Math.round(Math.max(1, wobble(`docker:${name}:mem`, memory, memory * 0.12))),
+        memoryMb: running ? Math.round(Math.max(1, wobble(`docker:${name}:mem`, memory, memory * 0.12))) : 0,
         memoryLimitMb: limit,
-        uptimeSec: 3600 * (12 + index),
+        uptimeSec: running ? 3600 * (12 + index) : 0,
         ports: index === 4 ? ['80:80', '443:443'] : [],
       };
     });
+  }
+
+  private findDefinition(id: string): string {
+    const definition = DOCKER_DEFINITIONS.find(([name]) => `ctr_${name}` === id);
+    if (!definition) throw notFound('Container not found');
+    return definition[0];
+  }
+
+  async restart(id: string): Promise<void> {
+    this.findDefinition(id);
+    state().dockerOverrides.set(id, 'running');
+  }
+
+  async stop(id: string): Promise<void> {
+    this.findDefinition(id);
+    state().dockerOverrides.set(id, 'exited');
+  }
+
+  async logs(id: string, tail = 200): Promise<string[]> {
+    const name = this.findDefinition(id);
+    const running = state().dockerOverrides.get(id) !== 'exited';
+    const lines = [
+      `[mock] ${name} container is ${running ? 'running' : 'stopped'}`,
+      `[mock] no real Docker socket in MOCK_MODE — these are synthetic log lines`,
+      ...Array.from({ length: Math.min(tail, 20) }, (_, index) => `[mock] ${name}: sample log line ${index + 1}`),
+    ];
+    return lines.slice(-tail);
   }
 }
 

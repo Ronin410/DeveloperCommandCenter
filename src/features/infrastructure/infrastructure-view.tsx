@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { usePolling } from '@/hooks/use-polling';
 import { useSession } from '@/components/layout/session-provider';
 import { apiDelete, apiPatch, apiPost, ApiError } from '@/lib/api/client';
+import { ContainerLogsModal } from '@/features/infrastructure/container-logs-modal';
 import { TopBar } from '@/components/layout/top-bar';
 import { PageHeader } from '@/components/layout/page-header';
 import { RefreshIndicator } from '@/components/layout/refresh-indicator';
@@ -41,6 +42,39 @@ export function InfrastructureView({ initial }: { initial: InfrastructureSnapsho
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
   const canDelete = user.role === 'ADMIN' || user.role === 'OPERATOR';
+
+  const [dockerBusyId, setDockerBusyId] = useState<string | null>(null);
+  const [dockerError, setDockerError] = useState<string | null>(null);
+  const [logsContainer, setLogsContainer] = useState<DockerContainer | null>(null);
+  const canManageContainers = user.role === 'ADMIN' || user.role === 'OPERATOR';
+
+  const restartContainer = async (id: string, name: string) => {
+    if (!window.confirm(`Restart "${name}"? It will be briefly unavailable.`)) return;
+    setDockerBusyId(id);
+    setDockerError(null);
+    try {
+      await apiPost(`/api/docker/${id}/restart`, {}, csrfToken);
+      await docker.refresh();
+    } catch (cause) {
+      setDockerError(cause instanceof ApiError ? cause.message : 'Something went wrong');
+    } finally {
+      setDockerBusyId(null);
+    }
+  };
+
+  const stopContainer = async (id: string, name: string) => {
+    if (!window.confirm(`Stop "${name}"? It will not restart on its own.`)) return;
+    setDockerBusyId(id);
+    setDockerError(null);
+    try {
+      await apiPost(`/api/docker/${id}/stop`, {}, csrfToken);
+      await docker.refresh();
+    } catch (cause) {
+      setDockerError(cause instanceof ApiError ? cause.message : 'Something went wrong');
+    } finally {
+      setDockerBusyId(null);
+    }
+  };
 
   const withBusy = async (id: string, action: () => Promise<void>) => {
     setBusyId(id);
@@ -207,6 +241,11 @@ export function InfrastructureView({ initial }: { initial: InfrastructureSnapsho
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <Card title="Docker" subtitle={docker.data.available ? `${docker.data.containers.length} containers` : 'Unavailable'} flush>
+            {dockerError && (
+              <p role="alert" className="mx-4 mt-4 rounded-lg border border-offline/40 bg-offline/10 px-3 py-2 text-sm text-offline">
+                {dockerError}
+              </p>
+            )}
             {docker.data.available ? (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[34rem] text-sm">
@@ -217,25 +256,57 @@ export function InfrastructureView({ initial }: { initial: InfrastructureSnapsho
                       <th className="px-4 py-2 font-medium">CPU</th>
                       <th className="px-4 py-2 font-medium">RAM</th>
                       <th className="px-4 py-2 font-medium">Uptime</th>
+                      <th className="px-4 py-2 font-medium text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-line">
-                    {docker.data.containers.map((container) => (
-                      <tr key={container.id}>
-                        <td className="px-4 py-2.5">
-                          <span className="block font-medium text-ink">{container.name}</span>
-                          <span className="block truncate text-xs text-ink-faint">{container.image}</span>
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <StatusPill status={container.status} label={container.state} />
-                        </td>
-                        <td className={cn('tabular px-4 py-2.5', container.cpuPct > 80 ? 'text-warning' : 'text-ink-muted')}>
-                          {formatPercent(container.cpuPct, 1)}
-                        </td>
-                        <td className="tabular px-4 py-2.5 text-ink-muted">{formatBytesMb(container.memoryMb)}</td>
-                        <td className="px-4 py-2.5 text-xs text-ink-faint">{formatUptime(container.uptimeSec)}</td>
-                      </tr>
-                    ))}
+                    {docker.data.containers.map((container) => {
+                      const busy = dockerBusyId === container.id;
+
+                      return (
+                        <tr key={container.id}>
+                          <td className="px-4 py-2.5">
+                            <span className="block font-medium text-ink">{container.name}</span>
+                            <span className="block truncate text-xs text-ink-faint">{container.image}</span>
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <StatusPill status={container.status} label={container.state} />
+                          </td>
+                          <td className={cn('tabular px-4 py-2.5', container.cpuPct > 80 ? 'text-warning' : 'text-ink-muted')}>
+                            {formatPercent(container.cpuPct, 1)}
+                          </td>
+                          <td className="tabular px-4 py-2.5 text-ink-muted">{formatBytesMb(container.memoryMb)}</td>
+                          <td className="px-4 py-2.5 text-xs text-ink-faint">{formatUptime(container.uptimeSec)}</td>
+                          <td className="px-4 py-2.5">
+                            <div className="flex justify-end gap-1.5">
+                              <RowAction
+                                icon="expand"
+                                label="Logs"
+                                disabled={busy}
+                                onClick={() => setLogsContainer(container)}
+                              />
+                              {canManageContainers && (
+                                <>
+                                  <RowAction
+                                    icon="refresh"
+                                    label="Restart"
+                                    disabled={busy}
+                                    onClick={() => void restartContainer(container.id, container.name)}
+                                  />
+                                  <RowAction
+                                    icon="stop"
+                                    label="Stop"
+                                    tone="danger"
+                                    disabled={busy || container.state !== 'running'}
+                                    onClick={() => void stopContainer(container.id, container.name)}
+                                  />
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -279,6 +350,14 @@ export function InfrastructureView({ initial }: { initial: InfrastructureSnapsho
           </Card>
         </div>
       </main>
+
+      {logsContainer && (
+        <ContainerLogsModal
+          containerId={logsContainer.id}
+          containerName={logsContainer.name}
+          onClose={() => setLogsContainer(null)}
+        />
+      )}
     </>
   );
 }

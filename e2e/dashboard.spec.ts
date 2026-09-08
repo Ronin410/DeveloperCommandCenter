@@ -121,4 +121,23 @@ test.describe('dashboard', () => {
     await renamedCard.getByLabel('Remove E2E Test Project Renamed').click();
     await expect(renamedCard).toHaveCount(0);
   });
+
+  test('views logs, stops and restarts a Docker container', async ({ page }) => {
+    await page.goto('/infrastructure');
+
+    const dockerCard = page.locator('section', { has: page.getByRole('heading', { name: 'Docker' }) });
+    const row = dockerCard.locator('tbody tr').first();
+
+    await row.getByLabel('Logs').click();
+    await expect(page.getByText(/^Logs — /)).toBeVisible();
+    await page.getByLabel('Close').click();
+
+    page.once('dialog', (dialog) => void dialog.accept());
+    await row.getByLabel('Stop').click();
+    await expect(row.getByText('exited')).toBeVisible();
+
+    page.once('dialog', (dialog) => void dialog.accept());
+    await row.getByLabel('Restart').click();
+    await expect(row.getByText('running')).toBeVisible();
+  });
 });

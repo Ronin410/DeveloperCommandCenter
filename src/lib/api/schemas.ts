@@ -28,6 +28,10 @@ export const metricQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(60),
 });
 
+export const dockerLogsQuerySchema = z.object({
+  tail: z.coerce.number().int().min(1).max(2000).default(200),
+});
+
 export const focusStartSchema = z.object({
   type: z.enum(FOCUS_SESSION_TYPES).default('FOCUS'),
   label: z.string().trim().max(120).nullish(),
