@@ -1,6 +1,6 @@
 import 'server-only';
 import { getContainer } from '@/services/container';
-import type { DatabaseStats } from '@/types/domain';
+import type { DatabaseDeepStats, DatabaseStats } from '@/types/domain';
 
 /**
  * DatabaseService (spec §13). Exposes aggregate health only — connection
@@ -13,6 +13,11 @@ export class DatabaseService {
 
   async getStats(): Promise<DatabaseStats> {
     return this.container.database.read();
+  }
+
+  /** Table sizes, slow queries and WAL archiving status (spec §13 "deep metrics"). */
+  async getDeepStats(): Promise<DatabaseDeepStats> {
+    return this.container.database.readDeep();
   }
 }
 

@@ -4,6 +4,7 @@ import type {
   AlertStatus,
   AlertType,
   CalendarEventRecord,
+  DatabaseDeepStats,
   DatabaseStats,
   DeploymentRecord,
   DockerContainer,
@@ -171,6 +172,8 @@ export interface DockerProvider {
 
 export interface DatabaseStatsProvider {
   read(): Promise<DatabaseStats>;
+  /** Table sizes, slow queries (when `pg_stat_statements` is installed) and WAL archiving status. */
+  readDeep(): Promise<DatabaseDeepStats>;
 }
 
 export interface GitProvider {

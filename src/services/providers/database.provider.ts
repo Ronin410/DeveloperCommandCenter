@@ -1,7 +1,7 @@
 import 'server-only';
 import { getPrisma, pingDatabase } from '@/database/client';
 import type { DatabaseStatsProvider } from '@/services/ports';
-import type { DatabaseStats } from '@/types/domain';
+import type { DatabaseDeepStats, DatabaseStats } from '@/types/domain';
 import { logger } from '@/lib/logger';
 
 /**
@@ -52,5 +52,73 @@ export class PostgresStatsProvider implements DatabaseStatsProvider {
       logger.warn('Could not read PostgreSQL statistics', { error: (error as Error).message });
       return fallback;
     }
+  }
+
+  async readDeep(): Promise<DatabaseDeepStats> {
+    const empty: DatabaseDeepStats = { tables: [], slowQueries: [], slowQueriesAvailable: false, walArchiving: null };
+
+    const ping = await pingDatabase();
+    if (!ping.ok) return empty;
+
+    const prisma = getPrisma();
+
+    const tables = await prisma
+      .$queryRaw<{ name: string; row_estimate: bigint; total_bytes: bigint; index_bytes: bigint }[]>`
+        SELECT
+          relname AS name,
+          n_live_tup AS row_estimate,
+          pg_total_relation_size(relid)::bigint AS total_bytes,
+          pg_indexes_size(relid)::bigint AS index_bytes
+        FROM pg_stat_user_tables
+        ORDER BY total_bytes DESC
+        LIMIT 10
+      `
+      .then((rows) =>
+        rows.map((row) => ({
+          name: row.name,
+          rowEstimate: Number(row.row_estimate),
+          totalMb: Math.round((Number(row.total_bytes) / (1024 * 1024)) * 100) / 100,
+          indexMb: Math.round((Number(row.index_bytes) / (1024 * 1024)) * 100) / 100,
+        })),
+      )
+      .catch((error: Error) => {
+        logger.warn('Could not read table sizes', { error: error.message });
+        return [];
+      });
+
+    // pg_stat_statements is an optional extension — most managed Postgres
+    // instances (Render included) don't enable it by default, so this is
+    // expected to fail there. `slowQueriesAvailable: false` lets the UI
+    // explain that rather than showing a silently-empty list.
+    let slowQueries: DatabaseDeepStats['slowQueries'] = [];
+    let slowQueriesAvailable = true;
+    try {
+      const rows = await prisma.$queryRaw<{ query: string; calls: bigint; mean_ms: number; total_ms: number }[]>`
+        SELECT query, calls, mean_exec_time AS mean_ms, total_exec_time AS total_ms
+        FROM pg_stat_statements
+        ORDER BY mean_exec_time DESC
+        LIMIT 10
+      `;
+      slowQueries = rows.map((row) => ({
+        query: row.query.length > 200 ? `${row.query.slice(0, 200)}…` : row.query,
+        calls: Number(row.calls),
+        meanMs: Math.round(row.mean_ms * 100) / 100,
+        totalMs: Math.round(row.total_ms * 100) / 100,
+      }));
+    } catch {
+      slowQueriesAvailable = false;
+    }
+
+    const walArchiving = await prisma
+      .$queryRaw<{ last_archived_time: Date | null; failed_count: bigint }[]>`
+        SELECT last_archived_time, failed_count FROM pg_stat_archiver
+      `
+      .then(([row]) => (row ? { lastArchivedAt: row.last_archived_time?.toISOString() ?? null, failedCount: Number(row.failed_count) } : null))
+      .catch((error: Error) => {
+        logger.warn('Could not read WAL archiver status', { error: error.message });
+        return null;
+      });
+
+    return { tables, slowQueries, slowQueriesAvailable, walArchiving };
   }
 }

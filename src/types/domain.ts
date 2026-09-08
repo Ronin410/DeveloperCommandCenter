@@ -193,6 +193,36 @@ export interface DatabaseStats {
   version: string;
 }
 
+/** One row from `pg_stat_user_tables`, ordered by total size (spec §13 "deep metrics"). */
+export interface TableSizeStat {
+  name: string;
+  rowEstimate: number;
+  totalMb: number;
+  indexMb: number;
+}
+
+/**
+ * One row from `pg_stat_statements`, when that extension is installed.
+ * `query` is Postgres's own normalized text (`$1`, `$2`, … placeholders
+ * instead of literal values), so it never carries the parameters a query was
+ * run with.
+ */
+export interface SlowQueryStat {
+  query: string;
+  calls: number;
+  meanMs: number;
+  totalMs: number;
+}
+
+export interface DatabaseDeepStats {
+  tables: TableSizeStat[];
+  slowQueries: SlowQueryStat[];
+  /** False when `pg_stat_statements` isn't installed — the UI explains rather than showing an empty list. */
+  slowQueriesAvailable: boolean;
+  /** Null when WAL archiving has never run (mock mode, or a fresh instance). */
+  walArchiving: { lastArchivedAt: string | null; failedCount: number } | null;
+}
+
 export interface GitRepositorySummary {
   id: string;
   name: string;

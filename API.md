@@ -176,6 +176,13 @@ layer the spec requires alongside it.
 ### `GET /api/docker/:id/logs` — query: `tail` (1–2000, default 200)
 Read-only, any authenticated session. Recent stdout/stderr lines, oldest first.
 ### `GET /api/database` — aggregate PostgreSQL health; never credentials
+
+### `GET /api/database/deep`
+Largest tables (name, row estimate, total/index size), the slowest queries
+(only when the `pg_stat_statements` extension is installed — otherwise
+`slowQueriesAvailable: false` and an empty list), and WAL archiving status.
+Costs several extra queries, so it's separate from `GET /api/database` and
+loaded on demand rather than polled.
 ### `GET /api/git` — repositories, commits and workflow status
 ### `GET /api/calendar` — `{ "today": [...], "upcoming": [...] }`
 

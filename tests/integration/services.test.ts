@@ -250,3 +250,14 @@ describe('docker container actions (mock mode)', () => {
     await expect(dockerService.logs('ctr_does_not_exist')).rejects.toMatchObject({ status: 404 });
   });
 });
+
+describe('database deep metrics (mock mode)', () => {
+  it('reports table sizes and slow queries', async () => {
+    const deep = await databaseService.getDeepStats();
+
+    expect(deep.tables.length).toBeGreaterThan(0);
+    expect(deep.slowQueriesAvailable).toBe(true);
+    expect(deep.slowQueries.length).toBeGreaterThan(0);
+    expect(deep.walArchiving).not.toBeNull();
+  });
+});

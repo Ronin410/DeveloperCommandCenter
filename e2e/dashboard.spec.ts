@@ -140,4 +140,12 @@ test.describe('dashboard', () => {
     await row.getByLabel('Restart').click();
     await expect(row.getByText('running')).toBeVisible();
   });
+
+  test('expands the database deep-metrics panel', async ({ page }) => {
+    await page.goto('/infrastructure');
+
+    await page.getByRole('button', { name: 'Details' }).click();
+    await expect(page.getByRole('heading', { name: 'Largest tables' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Slowest queries' })).toBeVisible();
+  });
 });

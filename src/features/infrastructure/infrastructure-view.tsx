@@ -5,6 +5,7 @@ import { usePolling } from '@/hooks/use-polling';
 import { useSession } from '@/components/layout/session-provider';
 import { apiDelete, apiPatch, apiPost, ApiError } from '@/lib/api/client';
 import { ContainerLogsModal } from '@/features/infrastructure/container-logs-modal';
+import { DatabaseDetailsButton } from '@/features/infrastructure/database-details-panel';
 import { TopBar } from '@/components/layout/top-bar';
 import { PageHeader } from '@/components/layout/page-header';
 import { RefreshIndicator } from '@/components/layout/refresh-indicator';
@@ -347,6 +348,10 @@ export function InfrastructureView({ initial }: { initial: InfrastructureSnapsho
                 <dd className="mt-1 text-ink">{formatRelativeTime(database.data.lastBackupAt)}</dd>
               </div>
             </dl>
+
+            <div className="mt-4">
+              <DatabaseDetailsButton />
+            </div>
           </Card>
         </div>
       </main>

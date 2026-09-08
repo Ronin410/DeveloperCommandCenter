@@ -2,6 +2,7 @@ import type {
   AlertRecord,
   AlertStatus,
   CalendarEventRecord,
+  DatabaseDeepStats,
   DatabaseStats,
   DeploymentRecord,
   DockerContainer,
@@ -777,6 +778,14 @@ export class MockDockerProvider implements DockerProvider {
   }
 }
 
+const MOCK_TABLES: [string, number, number, number][] = [
+  ['service_check', 812_400, 340, 58],
+  ['metric', 2_140_900, 512, 96],
+  ['audit_log', 94_200, 41, 12],
+  ['alert', 3_800, 2.4, 0.8],
+  ['service', 62, 0.3, 0.1],
+];
+
 export class MockDatabaseStatsProvider implements DatabaseStatsProvider {
   async read(): Promise<DatabaseStats> {
     return {
@@ -790,6 +799,24 @@ export class MockDatabaseStatsProvider implements DatabaseStatsProvider {
       memoryPct: Math.max(1, wobble('db:mem', 44, 7)),
       lastBackupAt: new Date(Date.now() - 6 * 3600_000).toISOString(),
       version: 'PostgreSQL 16.4',
+    };
+  }
+
+  async readDeep(): Promise<DatabaseDeepStats> {
+    return {
+      tables: MOCK_TABLES.map(([name, rows, total, index]) => ({
+        name,
+        rowEstimate: rows,
+        totalMb: total,
+        indexMb: index,
+      })),
+      slowQueries: [
+        { query: 'SELECT * FROM service_check WHERE service_id = $1 ORDER BY created_at DESC LIMIT $2', calls: 48213, meanMs: 12.4, totalMs: 598_141 },
+        { query: 'SELECT * FROM metric WHERE type = $1 AND timestamp > $2 ORDER BY timestamp DESC', calls: 9840, meanMs: 34.1, totalMs: 335_544 },
+        { query: 'UPDATE service SET status = $1, last_check_at = $2 WHERE id = $3', calls: 28800, meanMs: 3.2, totalMs: 92_160 },
+      ],
+      slowQueriesAvailable: true,
+      walArchiving: { lastArchivedAt: new Date(Date.now() - 3 * 60_000).toISOString(), failedCount: 0 },
     };
   }
 }
