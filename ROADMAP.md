@@ -8,14 +8,14 @@ implementation, but the seam for each one already exists in the code.
 Authentication · Dashboard · Services · Health checks · Projects · Alerts ·
 System metrics · PWA shell · Kiosk view · Mock mode · Tests · Docker.
 
-## Phase 2 — Infrastructure
+## Phase 2 — Infrastructure ✅
 
 - [x] Docker container actions (restart/stop/logs) with confirmation + role checks
 - [x] Per-container CPU/RAM via the stats stream
 - [x] Postgres deep metrics (slow queries, table sizes, backup status)
 - [x] Redis as cache + rate-limit store
 - [x] Historical metric charts from the `Metric` table
-- [ ] Retention/downsampling job
+- [x] Retention/downsampling job
 
 ## Phase 3 — DevOps
 

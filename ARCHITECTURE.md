@@ -89,6 +89,12 @@ personal command center that is the right amount of machinery; the module
 boundary is where BullMQ/Redis go if the workload grows. In mock mode the engine
 is not started and rules are evaluated on read instead.
 
+`services/retention.engine.ts` is the same shape on a much longer interval
+(a day by default): it purges old `ServiceCheck` rows and collapses old
+`Metric` points into hourly averages before eventually deleting those too, so
+the two append-only tables below don't grow forever. Same mock-mode rule —
+nothing to retain when nothing is persisted.
+
 ## Data model
 
 ```
@@ -106,7 +112,7 @@ Integration (external provider configuration, no secrets)
 ```
 
 `ServiceCheck` and `Metric` are append-only and indexed by `(subject, timestamp)`
-so history queries and retention jobs stay cheap.
+so history queries and the retention job (above) stay cheap.
 
 ## Request lifecycle
 

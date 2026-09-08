@@ -40,6 +40,15 @@ const envSchema = z
     MONITORING_INTERVAL_SECONDS: z.coerce.number().int().min(5).default(30),
     MONITORING_TIMEOUT_MS: z.coerce.number().int().min(250).default(5000),
 
+    /** How often the retention/downsampling job runs (spec §36). */
+    RETENTION_INTERVAL_HOURS: z.coerce.number().int().min(1).default(24),
+    /** Raw service-check history older than this is deleted outright — the rolling uptime window only looks at the last 200 anyway. */
+    SERVICE_CHECK_RETENTION_DAYS: z.coerce.number().int().min(1).default(30),
+    /** Metric points older than this are collapsed to one hourly average per (type, service, hour). */
+    METRIC_DOWNSAMPLE_AFTER_HOURS: z.coerce.number().int().min(1).default(24),
+    /** Even downsampled metric points are deleted after this long. */
+    METRIC_RETENTION_DAYS: z.coerce.number().int().min(1).default(90),
+
     REDIS_URL: z.string().optional(),
     GITHUB_TOKEN: z.string().optional(),
     DOCKER_SOCKET: z.string().default('/var/run/docker.sock'),

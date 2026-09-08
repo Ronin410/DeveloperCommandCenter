@@ -35,6 +35,9 @@ export async function register(): Promise<void> {
     if (!isMockMode()) {
       const { startMonitoringEngine } = await import('@/services/monitoring.engine');
       startMonitoringEngine();
+
+      const { startRetentionEngine } = await import('@/services/retention.engine');
+      startRetentionEngine();
     }
   } catch (error) {
     logger.error('Could not start the monitoring engine', { error: (error as Error).message });
